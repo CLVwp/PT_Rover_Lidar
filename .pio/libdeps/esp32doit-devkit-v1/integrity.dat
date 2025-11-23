@@ -1,0 +1,12 @@
+workloads/SCServo@^1.0.1
+wollewald/INA219_WE@^1.4.0
+adafruit/Adafruit SSD1306@^2.5.15
+denyssene/SimpleKalmanFilter@^0.1.0
+jandrassy/ArduinoOTA@^1.1.0
+links2004/WebSockets@^2.7.0
+madhephaestus/ESP32Encoder@^0.12.0
+adafruit/Adafruit INA219@^1.2.3
+bblanchon/ArduinoJson@^7.4.2
+https://github.com/imax9000/Arduino-PID-Library.git
+fabianober/WebSocketServer @ ^1.0.1
+adafruit/Adafruit ICM20X@^2.0.7
