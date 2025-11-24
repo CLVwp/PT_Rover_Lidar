@@ -115,7 +115,10 @@
 // {"T":143,"cmd":0}
 #define CMD_UART_ECHO_MODE	143
 
-
+// Get Lidar Emergency Status
+// {"T":150}
+// Return: {"T":150,"emergency":true/false,"minDist":distance_mm}
+#define CMD_LIDAR_STATUS 150
 
 // LIGHT/GIMBAL/MOVTION CTRL
 // {"T":132,"IO4":255,"IO5":255}

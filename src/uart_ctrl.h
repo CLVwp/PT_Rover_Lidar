@@ -1,3 +1,13 @@
+void getLidarStatus() {
+  jsonInfoHttp.clear();
+  jsonInfoHttp["T"] = CMD_LIDAR_STATUS;
+  jsonInfoHttp["emergency"] = emergencyStopActive;
+  
+  String getInfoJsonString;
+  serializeJson(jsonInfoHttp, getInfoJsonString);
+  Serial.println(getInfoJsonString);
+}
+
 void jsonCmdReceiveHandler(){
 	int cmdType = jsonCmdReceive["T"].as<int>();
 	switch(cmdType){
@@ -62,6 +72,8 @@ void jsonCmdReceiveHandler(){
 	case CMD_UART_ECHO_MODE:
 												setCmdEcho(
 												jsonCmdReceive["cmd"]);break;
+ 	case CMD_LIDAR_STATUS:
+                        getLidarStatus();break;                                                
 	case CMD_ARM_CTRL_UI: RoArmM2_uiCtrl(
 												jsonCmdReceive["E"],
 												jsonCmdReceive["Z"],
@@ -150,7 +162,7 @@ void jsonCmdReceiveHandler(){
 	case CMD_XYZT_GOAL_CTRL: 
 												RoArmM2_allPosAbsBesselCtrl(
 												jsonCmdReceive["x"],
-											  jsonCmdReceive["y"],
+												jsonCmdReceive["y"],
 											  jsonCmdReceive["z"],
 											  jsonCmdReceive["t"],
 											  jsonCmdReceive["spd"]
