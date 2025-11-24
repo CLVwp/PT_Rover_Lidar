@@ -13,6 +13,7 @@
 #define LIDAR_RX_PIN 5   // IO5 sur le Rover
 #define LIDAR_TX_PIN -1  // Pas utilisé
 #define LIDAR_BAUDRATE 230400
+#define LIDAR_EMERGENCY_DIST_MM 250 // 0.25m
 
 // ============================================
 // STRUCTURES
@@ -44,6 +45,7 @@ struct __attribute__((packed)) LidarPacket {
 HardwareSerial lidarSerial(2); 
 TaskHandle_t TaskLidarHandle;
 SemaphoreHandle_t pointsMutex;
+bool emergencyStopActive = false;
 
 // Buffer circulaire naturel (0-359 degrés)
 LidarPoint lidarPoints[360]; 
@@ -161,6 +163,36 @@ void lidarTask(void *parameter) {
         readLidarData();
     }
     vTaskDelay(1); // Pause minimale de 1 tick (1ms) pour laisser respirer l'OS
+  }
+}
+
+// Fonction de sécurité: vérifie si un obstacle est devant dans un cône de 45°
+void checkLidarEmergency() {
+  if (xSemaphoreTake(pointsMutex, 5) == pdTRUE) {
+    int obstacleCount = 0;
+    unsigned long now = millis();
+
+    // Scan de -45° (315°) à +45° (45°)
+    for (int i = 0; i < 360; i++) {
+      // Si point valide et récent (< 500ms)
+      if (lidarPoints[i].valid && (now - lidarPoints[i].lastUpdate < 500)) {
+        
+        // Cône frontal +/- 45 deg
+        bool inFront = (lidarPoints[i].angle > 315 || lidarPoints[i].angle < 45);
+        
+        if (inFront && lidarPoints[i].distance > 0 && lidarPoints[i].distance < LIDAR_EMERGENCY_DIST_MM) {
+          obstacleCount++;
+        }
+      }
+    }
+    xSemaphoreGive(pointsMutex);
+
+    // Si plus de 3 points détectés, on active l'urgence
+    if (obstacleCount > 3) {
+      emergencyStopActive = true;
+    } else {
+      emergencyStopActive = false;
+    }
   }
 }
 

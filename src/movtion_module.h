@@ -289,7 +289,17 @@ void rightCtrl(float pwmInputB){
   }
 }
 
+#include "lidar_ctrl.h"
+
 void setGoalSpeed(float inputLeft, float inputRight) {
+  // SECURITE LIDAR
+  // Si urgence active, on interdit d'avancer (valeurs > 0)
+  // On autorise le recul (valeurs < 0)
+  if (emergencyStopActive) {
+    if (inputLeft > 0) inputLeft = 0;
+    if (inputRight > 0) inputRight = 0;
+  }
+
   // setpoint_cmd_recv = millis();
   if (mainType == 3) {
     usePIDCompute = true;

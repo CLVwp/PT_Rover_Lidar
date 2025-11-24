@@ -27,8 +27,7 @@ void websocketTask(void *parameter) {
       doc.clear(); 
       JsonArray pts = doc.createNestedArray("points");
       
-      // On simule l'état d'urgence pour l'instant (à connecter à la logique Rover si besoin)
-      bool emergencyStopActive = false;
+      // On envoie l'état réel d'urgence
       doc["emergency"] = emergencyStopActive; 
       
       if (xSemaphoreTake(pointsMutex, 50) == pdTRUE) {
