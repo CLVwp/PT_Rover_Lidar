@@ -17,9 +17,9 @@
 // 2: STA
 // 3: AP+STA (default mode after first wifi connection succeed)
 byte WIFI_MODE_ON_BOOT = 3;
-const char* sta_ssid = "UGV";
-const char* sta_password = "12345678";
-const char* ap_ssid = "UGV";
+const char* sta_ssid = "JSBZY-2.4G";
+const char* sta_password = "waveshare0755";
+const char* ap_ssid = "RoArm";
 const char* ap_password = "12345678";
 
 // true: change the WIFI_MODE_ON_BOOT to 3 when first STA mode succeed.

@@ -69,6 +69,9 @@ StaticJsonDocument<512> jsonInfoHttp;
 // functions for http & web server.
 #include "http_server.h"
 
+// functions for Lidar ctrl.
+#include "lidar_ctrl.h"
+
 
 void moduleType_RoArmM2() {
   unsigned long curr_time = millis();
@@ -152,6 +155,10 @@ void setup() {
   oled_update();
   if(InfoPrint == 1){Serial.println("Power up the servos.");}
   delay(500);
+
+  // Init Lidar
+  if(InfoPrint == 1){Serial.println("Starting Lidar Task...");}
+  initLidar();
   
   // init servo ctrl functions.
   screenLine_2 = screenLine_3;
@@ -262,6 +269,21 @@ void loop() {
   }
 
   heartBeatCtrl();
+  
+  // Affichage debug du nombre de paquets Lidar
+  // static unsigned long lastDebugLidar = 0;
+  // if(millis() - lastDebugLidar > 2000) {
+  //   Serial.println("Lidar Packets: " + String(totalPacketsProcessed));
+    
+  //   // Exemple: afficher la distance devant (0°)
+  //   if(xSemaphoreTake(pointsMutex, 10) == pdTRUE) {
+  //      if(lidarPoints[0].valid) {
+  //          Serial.println("Dist 0 deg: " + String(lidarPoints[0].distance) + " mm");
+  //      }
+  //      xSemaphoreGive(pointsMutex);
+  //   }
+  //   lastDebugLidar = millis();
+  // }
 
   size_t freeHeap = esp_get_free_heap_size();
 }
