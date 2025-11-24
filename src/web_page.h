@@ -245,6 +245,12 @@ const char index_html[] PROGMEM = R"rawliteral(
         .big-num{font-size: 2em;}
         .controlor > div{margin: 40px 0;}
     }
+    /* Radar Styles */
+    #radar-section { text-align: center; background: #000; padding: 20px; border-radius: 8px; margin-top: 20px; }
+    canvas { max-width: 100%; background: #000; border-radius: 50%; border: 1px solid #334155; }
+    .status-dot { height: 10px; width: 10px; background: #ef4444; border-radius: 50%; display: inline-block; margin-right: 5px; }
+    .connected { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
+    .stats-overlay { font-family: monospace; color: #64748b; font-size: 12px; margin-bottom: 5px; }
     </style>
 </head>
 <body>
@@ -618,8 +624,153 @@ const char index_html[] PROGMEM = R"rawliteral(
                 </div>
             </div>
         </section>
+        
+        <!-- RADAR SECTION -->
+        <section id="radar-section">
+            <h2 class="h2-tt">Lidar Radar</h2>
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
+                <div id="ws-dot" class="status-dot"></div>
+                <span id="ws-text" style="font-size: 12px;">Déconnecté</span>
+            </div>
+            <div class="stats-overlay">
+                PTS: <span id="pt-count">0</span> | FPS: <span id="fps-count">0</span>
+            </div>
+            <canvas id="radar" width="400" height="400"></canvas>
+            <br>
+            <input type="range" id="range-slider" min="1" max="12" value="6" step="0.5" style="width: 80%; margin-top: 10px;">
+            <span id="range-val">6m</span>
+        </section>
+
     </main>
 <script>
+    // --- RADAR LOGIC ---
+    const canvas = document.getElementById('radar');
+    const ctx = canvas.getContext('2d');
+    const rangeSlider = document.getElementById('range-slider');
+    const rangeVal = document.getElementById('range-val');
+    
+    let maxDist = 6000; 
+    let points = [];
+    let frames = 0;
+    let lastTime = performance.now();
+
+    rangeSlider.oninput = function() {
+        maxDist = this.value * 1000;
+        rangeVal.textContent = this.value + 'm';
+    }
+
+    function connectWs() {
+        const ws = new WebSocket('ws://' + window.location.hostname + ':81');
+        
+        ws.onopen = () => {
+            document.getElementById('ws-dot').classList.add('connected');
+            document.getElementById('ws-text').textContent = "En ligne";
+        };
+        
+        ws.onclose = () => {
+            document.getElementById('ws-dot').classList.remove('connected');
+            document.getElementById('ws-text').textContent = "Reconnexion...";
+            setTimeout(connectWs, 2000);
+        };
+
+        ws.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if(data.emergency) {
+                    document.getElementById('ws-text').textContent = "⚠️ STOP OBSTACLE";
+                    document.getElementById('ws-text').style.color = "red";
+                } else {
+                    document.getElementById('ws-text').textContent = "En ligne";
+                    document.getElementById('ws-text').style.color = "#e2e8f0";
+                }
+                if(data.points) processPoints(data.points);
+            } catch(err) {}
+        };
+    }
+
+    function processPoints(raw) {
+        let newPoints = [];
+        for(let i=0; i<raw.length; i+=2) {
+            newPoints.push({ a: raw[i], d: raw[i+1] });
+        }
+        points = newPoints;
+        document.getElementById('pt-count').innerText = points.length;
+    }
+
+    function drawRadar() {
+        frames++;
+        const now = performance.now();
+        if(now - lastTime >= 1000) {
+            document.getElementById('fps-count').innerText = frames;
+            frames = 0;
+            lastTime = now;
+        }
+
+        const w = canvas.width;
+        const h = canvas.height;
+        const cx = w/2;
+        const cy = h/2;
+        const scale = (w/2) / maxDist; 
+
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const step = 1000; 
+        for(let d=step; d<=maxDist; d+=step) {
+            const r = d * scale;
+            ctx.moveTo(cx + r, cy);
+            ctx.arc(cx, cy, r, 0, Math.PI*2);
+        }
+        for(let a=0; a<360; a+=45) {
+            const rad = a * Math.PI/180;
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Math.cos(rad)*w, cy + Math.sin(rad)*w);
+        }
+        ctx.stroke();
+        
+        // Zone securite
+        const safeR = 500 * scale;
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)'; 
+        ctx.lineWidth = 2;
+        ctx.arc(cx, cy, safeR, -Math.PI/2 - Math.PI/6, -Math.PI/2 + Math.PI/6);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(-Math.PI/2 - Math.PI/6)*safeR, cy + Math.sin(-Math.PI/2 - Math.PI/6)*safeR);
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(-Math.PI/2 + Math.PI/6)*safeR, cy + Math.sin(-Math.PI/2 + Math.PI/6)*safeR);
+        ctx.stroke();
+
+        ctx.fillStyle = '#22d3ee'; 
+        for(let p of points) {
+            if(p.d > maxDist) continue;
+            const rad = (p.a - 90) * Math.PI/180;
+            const r = p.d * scale;
+            const x = cx + Math.cos(rad) * r;
+            const y = cy + Math.sin(rad) * r;
+            ctx.beginPath();
+            ctx.arc(x, y, 2, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI*2);
+        ctx.fill();
+        
+        requestAnimationFrame(drawRadar);
+    }
+
+    connectWs();
+    drawRadar();
+    
+    // --- END RADAR LOGIC ---
+
     var cmdA;
     var cmdB;
     var cmdC;
