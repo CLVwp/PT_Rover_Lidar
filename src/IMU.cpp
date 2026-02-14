@@ -1,7 +1,8 @@
 #include "IMU.h"
+#include <SimpleKalmanFilter.h>
 
 void calibrateMagn();
-void imuAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz);
+void imuAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, float halfT);
 float invSqrt(float x);
 
 /******************************************************************************
@@ -25,7 +26,23 @@ double declination_shenzhen = -3.22;
 #define Ki 1.0f    // integral gain governs rate of convergence of gyroscope biases
 
 float angles[3];
-float q0, q1, q2, q3; 
+float q0, q1, q2, q3;
+static unsigned long lastImuT = 0;  // pour dt réel dans AHRS (yaw plus fiable)
+
+// Filtres de Kalman : accéléro (mg), gyro (°/s). Réduit le bruit à l'immobilie (lidar qui tourne).
+// e_mea = incertitude mesure, e_est = incertitude estimation, q = bruit processus (plus q petit = plus lisse).
+#define KALMAN_ACC_MEAS  5.0f   // mg
+#define KALMAN_ACC_EST  3.0f
+#define KALMAN_ACC_Q    0.02f
+#define KALMAN_GYRO_MEAS 0.4f  // °/s
+#define KALMAN_GYRO_EST  0.3f
+#define KALMAN_GYRO_Q    0.01f
+SimpleKalmanFilter kf_ax(KALMAN_ACC_MEAS, KALMAN_ACC_EST, KALMAN_ACC_Q);
+SimpleKalmanFilter kf_ay(KALMAN_ACC_MEAS, KALMAN_ACC_EST, KALMAN_ACC_Q);
+SimpleKalmanFilter kf_az(KALMAN_ACC_MEAS, KALMAN_ACC_EST, KALMAN_ACC_Q);
+SimpleKalmanFilter kf_gx(KALMAN_GYRO_MEAS, KALMAN_GYRO_EST, KALMAN_GYRO_Q);
+SimpleKalmanFilter kf_gy(KALMAN_GYRO_MEAS, KALMAN_GYRO_EST, KALMAN_GYRO_Q);
+SimpleKalmanFilter kf_gz(KALMAN_GYRO_MEAS, KALMAN_GYRO_EST, KALMAN_GYRO_Q); 
 
 void imuInit()
 {
@@ -79,7 +96,15 @@ void imuDataGet(EulerAngles *pstAngles,
   pstMagnRawData->s16Z = z- offset_z;
 
   // qmi8658_.GetEulerAngles(&pstAngles->pitch,&pstAngles->roll,&pstAngles->yaw,acc,gyro);
-  qmi8658_.read_sensor_data(acc,gyro);
+  qmi8658_.read_sensor_data(acc, gyro);
+
+  // Filtrage Kalman : acc (mg) et gyro (°/s) pour réduire bruit / vibrations (ex. lidar)
+  acc[0] = kf_ax.updateEstimate(acc[0]);
+  acc[1] = kf_ay.updateEstimate(acc[1]);
+  acc[2] = kf_az.updateEstimate(acc[2]);
+  gyro[0] = kf_gx.updateEstimate(gyro[0]);
+  gyro[1] = kf_gy.updateEstimate(gyro[1]);
+  gyro[2] = kf_gz.updateEstimate(gyro[2]);
 
   // pstAngles->roll = atan2((float)acc[1], (float)acc[2]);
   // pstAngles->pitch = atan2(-(float)acc[0], sqrt((float)(acc[1] * acc[1]) + (float)(acc[2] * acc[2])));
@@ -101,9 +126,15 @@ void imuDataGet(EulerAngles *pstAngles,
   MotionVal[7]=pstMagnRawData->s16Y;
   MotionVal[8]=pstMagnRawData->s16Z;
 
+  // halfT en secondes (dt réel pour une intégration gyro correcte, important pour le yaw)
+  unsigned long now = millis();
+  float halfT = (lastImuT > 0) ? (0.5f * (now - lastImuT) * 0.001f) : 0.012f;
+  if (halfT <= 0.0f || halfT > 0.5f) halfT = 0.012f;  // limiter les écarts
+  lastImuT = now;
+
   imuAHRSupdate((float)MotionVal[0] * 0.0175, (float)MotionVal[1] * 0.0175, (float)MotionVal[2] * 0.0175,
                 (float)MotionVal[3], (float)MotionVal[4], (float)MotionVal[5], 
-                (float)MotionVal[6], (float)MotionVal[7], MotionVal[8]);
+                (float)MotionVal[6], (float)MotionVal[7], MotionVal[8], halfT);
 
 
 
@@ -122,13 +153,14 @@ void imuDataGet(EulerAngles *pstAngles,
   return;  
 }
 
-void imuAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz) 
+void imuAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, float halfT) 
 {
   float norm;
   float hx, hy, hz, bx, bz;
   float vx, vy, vz, wx, wy, wz;
   float exInt = 0.0, eyInt = 0.0, ezInt = 0.0;
-  float ex, ey, ez, halfT = 0.024f; /*half the sample period*/
+  float ex, ey, ez;
+  if (halfT <= 0.0f || halfT > 0.5f) halfT = 0.012f;  // sec
 
   float q0q0 = q0 * q0;
   float q0q1 = q0 * q1;

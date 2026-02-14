@@ -373,6 +373,7 @@ double icm_pitch, icm_roll, icm_yaw, icm_temp;
 unsigned long last_imu_update = 0;
 
 double qw, qx, qy, qz;
-double ax, ay, az;
+double ax, ay, az;       // accélération en mg (QMI8658)
+double ax_ms2, ay_ms2, az_ms2;  // accélération en m/s² pour SLAM
 double mx, my, mz;
 double gx, gy, gz;

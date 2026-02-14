@@ -16,9 +16,9 @@
 // 1: AP (default mode as a brand new product)
 // 2: STA
 // 3: AP+STA (default mode after first wifi connection succeed)
-byte WIFI_MODE_ON_BOOT = 3;
-const char* sta_ssid = "JSBZY-2.4G";
-const char* sta_password = "waveshare0755";
+byte WIFI_MODE_ON_BOOT = 2;
+const char* sta_ssid = "Rasp";
+const char* sta_password = "12345678";
 const char* ap_ssid = "RoArm";
 const char* ap_password = "12345678";
 

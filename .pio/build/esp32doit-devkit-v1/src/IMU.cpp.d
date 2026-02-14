@@ -136,4 +136,5 @@
  C:/Users/viell/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
  C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src/Wire.h \
  C:/Users/viell/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal.h \
- src/QMI8658.h src/QMI8658reg.h
+ src/QMI8658.h src/QMI8658reg.h \
+ .pio/libdeps/esp32doit-devkit-v1/SimpleKalmanFilter/src/SimpleKalmanFilter.h

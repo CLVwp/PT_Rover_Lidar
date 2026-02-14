@@ -302,6 +302,24 @@ const char index_html[] PROGMEM = R"rawliteral(
                         </div>
                     </div>
                     <div class="info-device-box">
+                        <div class="info-box num-box-mid">
+                            <div><span class="sma-num num-color" id="ax_ms2">--</span><span id="ax_ms2n">ax m/s²</span></div>
+                            <div><span class="sma-num num-color" id="ay_ms2">--</span><span id="ay_ms2n">ay m/s²</span></div>
+                            <div><span class="sma-num num-color" id="az_ms2">--</span><span id="az_ms2n">az m/s²</span></div>
+                            <div><span class="sma-num num-color" id="gx">--</span><span id="gxn">gx °/s</span></div>
+                            <div><span class="sma-num num-color" id="gy">--</span><span id="gyn">gy °/s</span></div>
+                            <div><span class="sma-num num-color" id="gz">--</span><span id="gzn">gz °/s</span></div>
+                        </div>
+                        <div class="info-box num-box-sma" style="margin-top:8px;">
+                            <div><span class="sma-num" id="ax">--</span><span>ax mg</span></div>
+                            <div><span class="sma-num" id="ay">--</span><span>ay mg</span></div>
+                            <div><span class="sma-num" id="az">--</span><span>az mg</span></div>
+                            <div><span class="sma-num" id="mx">--</span><span>mx</span></div>
+                            <div><span class="sma-num" id="my">--</span><span>my</span></div>
+                            <div><span class="sma-num" id="mz">--</span><span>mz</span></div>
+                        </div>
+                    </div>
+                    <div class="info-device-box">
                         <div class="info-box num-box-sma">
                             <div>
                                 <span class="num-color sma-num" id="IP">192.168.10.67</span>
@@ -860,15 +878,28 @@ const char index_html[] PROGMEM = R"rawliteral(
                 document.getElementById("y").innerHTML = jsonResponse.y?.toFixed(2);
                 document.getElementById("mZ").innerHTML = speed_rate;
 
+                if (jsonResponse.ax_ms2 != null) document.getElementById("ax_ms2").innerHTML = jsonResponse.ax_ms2.toFixed(3);
+                if (jsonResponse.ay_ms2 != null) document.getElementById("ay_ms2").innerHTML = jsonResponse.ay_ms2.toFixed(3);
+                if (jsonResponse.az_ms2 != null) document.getElementById("az_ms2").innerHTML = jsonResponse.az_ms2.toFixed(3);
+                if (jsonResponse.gx != null) document.getElementById("gx").innerHTML = jsonResponse.gx.toFixed(2);
+                if (jsonResponse.gy != null) document.getElementById("gy").innerHTML = jsonResponse.gy.toFixed(2);
+                if (jsonResponse.gz != null) document.getElementById("gz").innerHTML = jsonResponse.gz.toFixed(2);
+                if (jsonResponse.ax != null) document.getElementById("ax").innerHTML = jsonResponse.ax.toFixed(0);
+                if (jsonResponse.ay != null) document.getElementById("ay").innerHTML = jsonResponse.ay.toFixed(0);
+                if (jsonResponse.az != null) document.getElementById("az").innerHTML = jsonResponse.az.toFixed(0);
+                if (jsonResponse.mx != null) document.getElementById("mx").innerHTML = jsonResponse.mx;
+                if (jsonResponse.my != null) document.getElementById("my").innerHTML = jsonResponse.my;
+                if (jsonResponse.mz != null) document.getElementById("mz").innerHTML = jsonResponse.mz;
+
                 if (jsonResponse.hasOwnProperty('pan')) {
                     document.getElementById("mX").innerHTML = jsonResponse.pan?.toFixed(2);
                     document.getElementById("mY").innerHTML = jsonResponse.tilt?.toFixed(2);
 
                     read_X = jsonResponse.pan;
                     read_Y = jsonResponse.tilt;
-                } else{
-                    document.getElementById("mX").innerHTML = "null";
-                    document.getElementById("mY").innerHTML = "null";
+                } else {
+                    document.getElementById("mX").innerHTML = "—";
+                    document.getElementById("mY").innerHTML = "—";
 
                     read_X = 0;
                     read_Y = 0;

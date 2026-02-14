@@ -271,7 +271,7 @@ void loop() {
   heartBeatCtrl();
   
   // Vérification sécurité Lidar (non bloquant)
-  checkLidarEmergency();
+  //checkLidarEmergency();
 
   size_t freeHeap = esp_get_free_heap_size();
 }

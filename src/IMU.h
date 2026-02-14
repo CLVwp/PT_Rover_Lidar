@@ -25,7 +25,7 @@ void imuDataGet(EulerAngles *pstAngles,
                 IMU_ST_SENSOR_DATA_FLOAT *pstGyroRawData,
                 IMU_ST_SENSOR_DATA_FLOAT *pstAccelRawData,
                 IMU_ST_SENSOR_DATA *pstMagnRawData); 
-void imuAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz);
+void imuAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, float halfT);
 float invSqrt(float x);
 
 #endif

@@ -7,6 +7,12 @@ IMU_ST_SENSOR_DATA_FLOAT stAccelRawData;
 IMU_ST_SENSOR_DATA stMagnRawData;
 float temp;
 
+// --- Unités IMU (pour SLAM / fusion) ---
+// ax, ay, az : accélération en mg (milli-g). En m/s² : ax_ms2 = ax * 0.00981f
+// gx, gy, gz : gyro en °/s (degrés/seconde)
+// mx, my, mz : magnétomètre (unités arbitraires, brut)
+// roll, pitch : degrés, issus accel+gyro (fiables)
+// yaw : degrés, issu accel+gyro+mag (sensible aux perturbations magnétiques et au calibrage mag)
 
 void imu_init() {
 	imuInit();
@@ -16,9 +22,13 @@ void imu_init() {
 void updateIMUData() {
 	imuDataGet( &stAngles, &stGyroRawData, &stAccelRawData, &stMagnRawData);
 
+	// Accélérations brutes (mg). Pour SLAM en m/s² : utiliser ax_ms2, ay_ms2, az_ms2
 	ax = stAccelRawData.X;
 	ay = stAccelRawData.Y;
 	az = stAccelRawData.Z;
+	ax_ms2 = ax * 0.00981;
+	ay_ms2 = ay * 0.00981;
+	az_ms2 = az * 0.00981;
 
 	mx = stMagnRawData.s16X;
 	my = stMagnRawData.s16Y;
@@ -78,6 +88,9 @@ void getIMUData() {
 	jsonInfoHttp["ax"] = ax;
 	jsonInfoHttp["ay"] = ay;
 	jsonInfoHttp["az"] = az;
+	jsonInfoHttp["ax_ms2"] = ax_ms2;
+	jsonInfoHttp["ay_ms2"] = ay_ms2;
+	jsonInfoHttp["az_ms2"] = az_ms2;
 
 	jsonInfoHttp["gx"] = gx;
 	jsonInfoHttp["gy"] = gy;

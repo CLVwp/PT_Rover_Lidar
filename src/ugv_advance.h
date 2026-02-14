@@ -389,6 +389,18 @@ void baseInfoFeedback() {
 	jsonInfoHttp["r"] = icm_roll;
 	jsonInfoHttp["p"] = icm_pitch;
 	jsonInfoHttp["y"] = icm_yaw;
+	jsonInfoHttp["ax"] = ax;
+	jsonInfoHttp["ay"] = ay;
+	jsonInfoHttp["az"] = az;
+	jsonInfoHttp["ax_ms2"] = ax_ms2;
+	jsonInfoHttp["ay_ms2"] = ay_ms2;
+	jsonInfoHttp["az_ms2"] = az_ms2;
+	jsonInfoHttp["gx"] = gx;
+	jsonInfoHttp["gy"] = gy;
+	jsonInfoHttp["gz"] = gz;
+	jsonInfoHttp["mx"] = mx;
+	jsonInfoHttp["my"] = my;
+	jsonInfoHttp["mz"] = mz;
 
 	// jsonInfoHttp["q0"] = qw;
 	// jsonInfoHttp["q1"] = qx;
