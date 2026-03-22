@@ -10,11 +10,8 @@
             "includePath": [
                 "C:/Users/viell/Desktop/PT_Rover_Lidar/include",
                 "C:/Users/viell/Desktop/PT_Rover_Lidar/src",
-                "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
                 "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/LittleFS/src",
                 "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
-                "C:/Users/viell/Desktop/PT_Rover_Lidar/.pio/libdeps/esp32doit-devkit-v1/WebSocketServer/src",
-                "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
                 "C:/Users/viell/Desktop/PT_Rover_Lidar/.pio/libdeps/esp32doit-devkit-v1/ArduinoOTA/src",
                 "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
                 "C:/Users/viell/Desktop/PT_Rover_Lidar/.pio/libdeps/esp32doit-devkit-v1/WebSockets/src",
@@ -253,7 +250,9 @@
                 "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/SD_MMC/src",
                 "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/SPIFFS/src",
                 "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/SimpleBLE/src",
+                "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
                 "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/USB/src",
+                "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
                 "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
                 ""
             ],
@@ -262,11 +261,8 @@
                 "path": [
                     "C:/Users/viell/Desktop/PT_Rover_Lidar/include",
                     "C:/Users/viell/Desktop/PT_Rover_Lidar/src",
-                    "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
                     "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/LittleFS/src",
                     "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
-                    "C:/Users/viell/Desktop/PT_Rover_Lidar/.pio/libdeps/esp32doit-devkit-v1/WebSocketServer/src",
-                    "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
                     "C:/Users/viell/Desktop/PT_Rover_Lidar/.pio/libdeps/esp32doit-devkit-v1/ArduinoOTA/src",
                     "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
                     "C:/Users/viell/Desktop/PT_Rover_Lidar/.pio/libdeps/esp32doit-devkit-v1/WebSockets/src",
@@ -505,7 +501,9 @@
                     "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/SD_MMC/src",
                     "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/SPIFFS/src",
                     "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/SimpleBLE/src",
+                    "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
                     "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/USB/src",
+                    "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
                     "C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
                     ""
                 ]

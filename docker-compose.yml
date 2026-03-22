@@ -1,0 +1,65 @@
+name: pt-rover-lidar
+
+services:
+  rover_bridge:
+    build:
+      context: .
+      dockerfile: docker/bridge/Dockerfile
+    volumes:
+      - .:/workspace
+    environment:
+      # IP du rover (pour HTTP IMU + /js + commandes). A adapter selon ton réseau.
+      - ROS_ROVER_IP=${ROS_ROVER_IP:-192.168.137.141}
+      # Pour que Foxglove bridge et ROS utilisent le même domaine DDS.
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      # Mapping "naïf" = tu pilotes depuis Foxglove via /cmd_vel.
+      # Mets à 1 si tu veux que le conteneur lance aussi l'autonome immédiatement.
+      - START_AUTONOMOUS_NAV=${START_AUTONOMOUS_NAV:-0}
+      # Estimateur de trajectoire pour alimenter TF + /odom:
+      # - lidar = ICP 2D
+      # - lio   = LiDAR + yaw IMU
+      - ESTIMATOR_MODE=${ESTIMATOR_MODE:-lio}
+      # Pour enregistrer/rejouer un trajet sur la carte SLAM, viser "map" par défaut.
+      - GOTO_TARGET_FRAME=${GOTO_TARGET_FRAME:-map}
+      # Gestionnaire de navigation (waypoints, follow, patrol, naive) via /nav_control
+      - START_NAV_MANAGER=${START_NAV_MANAGER:-1}
+      # Monitoring IMU (angles/accel + resume stabilité)
+      - START_IMU_MONITOR=${START_IMU_MONITOR:-1}
+      # Arrêt moteurs si plus de /cmd_vel. Garde une marge modérée sans retarder le stop.
+      - CMD_VEL_TIMEOUT_S=${CMD_VEL_TIMEOUT_S:-0.80}
+      - TZ=UTC
+    ports:
+      # WebSocket Foxglove côté Windows (Chrome)
+      - "8765:8765"
+    command: ["bash", "-lc", "bash /workspace/docker/bridge/start_mapping_naive.sh"]
+
+  slam_toolbox:
+    build:
+      context: .
+      dockerfile: docker/slam/Dockerfile
+    volumes:
+      - .:/workspace
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - TZ=UTC
+      # Laisse quelques secondes à /lidar_scan + /odom/TF pour démarrer.
+      - SLAM_START_DELAY_S=${SLAM_START_DELAY_S:-3}
+    depends_on:
+      - rover_bridge
+    command: ["bash", "-lc", "bash /workspace/docker/slam/start_slam.sh"]
+
+  web_ui:
+    build:
+      context: .
+      dockerfile: docker/webui/Dockerfile
+    volumes:
+      - .:/workspace
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - TZ=UTC
+    ports:
+      - "8080:8080"
+    depends_on:
+      - rover_bridge
+    command: ["bash", "-lc", "bash /workspace/docker/webui/start_webui.sh"]
+

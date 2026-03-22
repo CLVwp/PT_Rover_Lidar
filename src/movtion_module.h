@@ -148,19 +148,29 @@ void initEncoders() {
   // }
   encoderA.setCount(0);
   encoderB.setCount(0);
+  lastEncoderA = 0;
+  lastEncoderB = 0;
+  unsigned long now = micros();
+  lastTime = now;
+  lastLeftSpdTime = now;
+  lastRightSpdTime = now;
 }
 
 void getWheelSpeed() {
   unsigned long currentTime = micros();
+  unsigned long deltaTime = currentTime - lastTime;
+  if (deltaTime == 0) {
+    return;
+  }
   long encoderPulsesA = encoderA.getCount();
   long encoderPulsesB = encoderB.getCount();
 
   if (!SET_MOTOR_DIR) {
-    speedGetA = (plusesRate * (encoderPulsesA - lastEncoderA)) / ((double)(currentTime - lastTime) / 1000000);
-    speedGetB = (plusesRate * (encoderPulsesB - lastEncoderB)) / ((double)(currentTime - lastTime) / 1000000);
+    speedGetA = (plusesRate * (encoderPulsesA - lastEncoderA)) / ((double)deltaTime / 1000000);
+    speedGetB = (plusesRate * (encoderPulsesB - lastEncoderB)) / ((double)deltaTime / 1000000);
   } else {
-    speedGetA = (plusesRate * (lastEncoderA - encoderPulsesA)) / ((double)(currentTime - lastTime) / 1000000);
-    speedGetB = (plusesRate * (lastEncoderB - encoderPulsesB)) / ((double)(currentTime - lastTime) / 1000000);
+    speedGetA = (plusesRate * (lastEncoderA - encoderPulsesA)) / ((double)deltaTime / 1000000);
+    speedGetB = (plusesRate * (lastEncoderB - encoderPulsesB)) / ((double)deltaTime / 1000000);
   }
   lastEncoderA = encoderPulsesA;
   lastEncoderB = encoderPulsesB;
@@ -169,11 +179,15 @@ void getWheelSpeed() {
 
 void getLeftSpeed() {
   unsigned long currentTime = micros();
+  unsigned long deltaTime = currentTime - lastLeftSpdTime;
+  if (deltaTime == 0) {
+    return;
+  }
   long encoderPulsesA = encoderA.getCount();
   if (!SET_MOTOR_DIR) {
-    speedGetA = (plusesRate * (encoderPulsesA - lastEncoderA)) / ((double)(currentTime - lastLeftSpdTime) / 1000000);
+    speedGetA = (plusesRate * (encoderPulsesA - lastEncoderA)) / ((double)deltaTime / 1000000);
   } else {
-    speedGetA = (plusesRate * (lastEncoderA - encoderPulsesA)) / ((double)(currentTime - lastLeftSpdTime) / 1000000);
+    speedGetA = (plusesRate * (lastEncoderA - encoderPulsesA)) / ((double)deltaTime / 1000000);
   }
   lastEncoderA = encoderPulsesA;
   lastLeftSpdTime = currentTime;
@@ -181,11 +195,15 @@ void getLeftSpeed() {
 
 void getRightSpeed() {
   unsigned long currentTime = micros();
+  unsigned long deltaTime = currentTime - lastRightSpdTime;
+  if (deltaTime == 0) {
+    return;
+  }
   long encoderPulsesB = encoderB.getCount();
   if (!SET_MOTOR_DIR) {
-    speedGetB = (plusesRate * (encoderPulsesB - lastEncoderB)) / ((double)(currentTime - lastRightSpdTime) / 1000000);
+    speedGetB = (plusesRate * (encoderPulsesB - lastEncoderB)) / ((double)deltaTime / 1000000);
   } else {
-    speedGetB = (plusesRate * (lastEncoderB - encoderPulsesB)) / ((double)(currentTime - lastRightSpdTime) / 1000000);
+    speedGetB = (plusesRate * (lastEncoderB - encoderPulsesB)) / ((double)deltaTime / 1000000);
   }
   lastEncoderB = encoderPulsesB;
   lastRightSpdTime = currentTime;
@@ -205,15 +223,8 @@ double outputB = 0;
 double setpointA = 0;
 double setpointB = 0;
 
-int setpoint_interval = 200;
-unsigned long setpoint_cmd_recv = millis();
-unsigned long setpoint_last_time = millis();
 float setpointA_buffer;
 float setpointB_buffer;
-float setpointA_last;
-float setpointB_last;
-float change_offset = 0.005;
-bool new_setpoint_flag = false;
 
 void pidControllerInit() {
   pidA.Start(speedGetA,
@@ -317,12 +328,12 @@ void setGoalSpeed(float inputLeft, float inputRight) {
 
     if (setpointA != setpointA_buffer) {
       pidA.Setpoint(setpointA);
-      setpointA_buffer = inputLeft;
+      setpointA_buffer = setpointA;
     }
     
     if (setpointB != setpointB_buffer) {
       pidB.Setpoint(setpointB);
-      setpointB_buffer = inputRight;
+      setpointB_buffer = setpointB;
     }
   } else {
     usePIDCompute = false;

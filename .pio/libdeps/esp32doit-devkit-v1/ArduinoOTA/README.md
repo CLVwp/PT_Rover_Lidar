@@ -36,7 +36,7 @@ The library is a modification of the Arduino WiFi101OTA library.
 
 ## Supported networking libraries
 
-The ArduinoOTA library will work any proper Arduino Ethernet or WiFi library. For Ethernet library add `#define OTETHERNET` before including the ArduinoOTA library. If you don't want a network port or the library doesn't support it, add `#define NO_OTA_PORT` before including the ArduinoOTA library. If you only want to use InternalStorage without the network upload from IDE, add `#define NO_OTA_NETWORK` before including the ArduinoOTA library.
+The ArduinoOTA library will work with any proper Arduino Ethernet or WiFi library. For Ethernet library add `#define OTETHERNET` before including the ArduinoOTA library. If you don't want a network port or the library doesn't support it, add `#define NO_OTA_PORT` before including the ArduinoOTA library. If you only want to use InternalStorage without the network upload from IDE, add `#define NO_OTA_NETWORK` before including the ArduinoOTA library.
 
 Tested libraries are:
 * Ethernet library - Ethernet shields and modules with Wiznet 5100, 5200 and 5500 chips
@@ -47,7 +47,7 @@ Tested libraries are:
 * EthernetENC - shields and modules with ENC28j60 chip
 * WiFi library of the Pico Core including its Ethernet network interfaces
 
-EthernetENC and WiFiEspAT with esp8266 doesn't support UDP multicast for MDNS, so Arduino IDE will not show the network upload port.
+EthernetENC and WiFiEspAT doesn't support UDP multicast for MDNS, so Arduino IDE will not show the network upload port.
 
 ## Installation
 
@@ -123,7 +123,11 @@ The IDE upload tool is installed with Arduino AVR core package. At least version
 
 This library allows to upload a sketch to esp8266 or esp32 over Ethernet with Ethernet or EthernetENC library.
 
-*Note: Both esp8266 and esp32 Arduino core now support wired Ethernet as additional network interface for their WiFi library (STA and SoftAP are the 'built-in' network interfaces). With Ethernet over WiFi library you can use the standard OTA upload of the esp8266 and esp32 core with wired Ethernet.*
+*Both esp8266 and esp32 Arduino core now support wired network as additional network interface for their networking (STA and SoftAP are the 'built-in' network interfaces). With their Ethernet libraries you can use the standard OTA upload of the esp8266 and esp32 platform with wired network.*
+
+*With esp8266 platform's lwIP_xy libraries (optionally with the EtherCompat.h) you can use W5500, W5100 and ENC28J60 wired network.*
+
+*With esp32 platform version 3 you can use the EthernetESP32 library (available in Library Manager) with a variety of Ethernet modules including W5500 and ENC28J60. See the BasicOTA example in the EthernetESP32 library,*
 
 To use this library instead of the bundled library, the bundled library must be removed from the boards package library folder. To override the configuration of OTA upload in platform.txt, copy the platform.local.txt file from extras folder of this library next to platform.txt file in boards package installation folder. For Arduino IDE 2 use platform.local.txt from extras/IDE2.
 
@@ -219,10 +223,11 @@ Does the OTA uploaded sketch have ArduinoOTA?
     - Crowduino M0 SD
     - Arduino Nano 33 IoT
     - Arduino MKR WiFi 1000
-    - [Arduino MKR WiFi 1010](https://github.com/jandrassy/ArduinoOTA/issues/46)
+    - Arduino MKR WiFi 1010
     - [Adafruit Feather M0 Express](https://github.com/jandrassy/ArduinoOTA/discussions/77)
 * SAMD51
     - [Seeed Wio Terminal](https://github.com/jandrassy/ArduinoOTA/pull/104) (with Blynk.Edgent)
+    - Adafruit ItsyBitsy M4
 * Renesas core
     - Uno R4 WiFi
 * RP2040

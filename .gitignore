@@ -3,3 +3,8 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# ros2_bridge
+ros2_bridge/bags/
+ros2_bridge/.record.pid
+ros2_bridge/.venv/

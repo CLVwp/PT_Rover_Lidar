@@ -10,7 +10,6 @@ StaticJsonDocument<512> jsonInfoHttp;
 #include <esp_system.h>
 #include <LittleFS.h>
 #include <WiFi.h>
-#include <WebServer.h>
 #include <esp_now.h>
 #include <nvs_flash.h>
 #include <Adafruit_SSD1306.h>
@@ -237,7 +236,6 @@ void setup() {
 
 void loop() {
   serialCtrl();
-  server.handleClient();
 
   // read and compute the info of joints.
   switch (moduleType) {
@@ -252,12 +250,9 @@ void loop() {
     runNewJsonCmd = false;
   }
 
-  getLeftSpeed();
+  getWheelSpeed();
 
   LeftPidControllerCompute();
-  
-  getRightSpeed();
-  
   RightPidControllerCompute();
   
   oledInfoUpdate();
@@ -273,5 +268,4 @@ void loop() {
   // Vérification sécurité Lidar (non bloquant)
   //checkLidarEmergency();
 
-  size_t freeHeap = esp_get_free_heap_size();
 }

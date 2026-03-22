@@ -207,11 +207,6 @@
  C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiUdp.h \
  C:/Users/viell/.platformio/packages/framework-arduinoespressif32/cores/esp32/Udp.h \
  C:/Users/viell/.platformio/packages/framework-arduinoespressif32/cores/esp32/cbuf.h \
- C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/WebServer.h \
- C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/HTTP_Method.h \
- C:/Users/viell/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/nghttp/port/include/http_parser.h \
- C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/Uri.h \
- C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/detail/RequestHandler.h \
  C:/Users/viell/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_wifi/include/esp_now.h \
  C:/Users/viell/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_wifi/include/esp_wifi_types.h \
  .pio/libdeps/esp32doit-devkit-v1/Adafruit\ SSD1306/Adafruit_SSD1306.h \
@@ -242,7 +237,7 @@
  src/movtion_module.h src/lidar_ctrl.h \
  C:/Users/viell/.platformio/packages/framework-arduinoespressif32/cores/esp32/HardwareSerial.h \
  src/files_ctrl.h src/ugv_advance.h src/wifi_ctrl.h src/esp_now_ctrl.h \
- src/uart_ctrl.h src/http_server.h src/web_page.h \
+ src/uart_ctrl.h src/http_server.h \
  .pio/libdeps/esp32doit-devkit-v1/WebSockets/src/WebSocketsServer.h \
  .pio/libdeps/esp32doit-devkit-v1/WebSockets/src/WebSockets.h \
  .pio/libdeps/esp32doit-devkit-v1/WebSockets/src/WebSocketsVersion.h \

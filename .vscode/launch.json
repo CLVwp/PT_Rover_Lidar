@@ -15,8 +15,8 @@
             "args": [],
             "stopAtEntry": false,
             "externalConsole": true,
-            "cwd": "c:/Users/viell/Documents/PlatformIO/Projects/PT_Rover_lidar",
-            "program": "c:/Users/viell/Documents/PlatformIO/Projects/PT_Rover_lidar/build/Debug/outDebug",
+            "cwd": "c:/Users/viell/Desktop/PT_Rover_Lidar/src",
+            "program": "c:/Users/viell/Desktop/PT_Rover_Lidar/src/build/Debug/outDebug",
             "MIMode": "gdb",
             "miDebuggerPath": "C:/Users/viell/.platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-gdb.exe",
             "setupCommands": [

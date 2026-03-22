@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PT Rover - Telemetrie</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; background:#0b1220; color:#e5e7eb; }
+    .row { display:flex; gap:16px; flex-wrap:wrap; }
+    .card { background:#111827; border:1px solid #374151; border-radius:8px; padding:12px; min-width:280px; }
+    button { padding:8px 12px; margin:4px; border-radius:6px; border:0; background:#2563eb; color:white; cursor:pointer; touch-action:manipulation; user-select:none; }
+    button.stop { background:#dc2626; }
+    canvas { background:#000; border-radius:8px; border:1px solid #374151; }
+    .mono { font-family: Consolas, monospace; font-size:12px; color:#93c5fd; }
+  </style>
+</head>
+<body>
+  <h2>PT Rover - Telemetrie & Controle (PC)</h2>
+  <div class="row">
+    <div class="card">
+      <h3>IMU</h3>
+      <div>Roll: <span id="r">--</span> deg</div>
+      <div>Pitch: <span id="p">--</span> deg</div>
+      <div>Yaw: <span id="y">--</span> deg</div>
+      <hr />
+      <div>ax: <span id="ax">--</span> m/s2</div>
+      <div>ay: <span id="ay">--</span> m/s2</div>
+      <div>az: <span id="az">--</span> m/s2</div>
+      <hr />
+      <div>gx: <span id="gx">--</span> deg/s</div>
+      <div>gy: <span id="gy">--</span> deg/s</div>
+      <div>gz: <span id="gz">--</span> deg/s</div>
+    </div>
+
+    <div class="card">
+      <h3>Controle</h3>
+      <p class="mono" style="margin:0 0 8px 0;font-size:11px;opacity:0.85;">Maintenir pour rouler. Moteurs : chemin unique via /cmd_vel vers le bridge ROS. Télémétrie : Docker.</p>
+      <div>
+        <button type="button" class="hold-cmd" data-lin="0.35" data-ang="0">Avancer</button>
+        <button type="button" class="hold-cmd" data-lin="-0.25" data-ang="0">Reculer</button>
+      </div>
+      <div>
+        <button type="button" class="hold-cmd" data-lin="0" data-ang="2">Tourner G</button>
+        <button type="button" class="hold-cmd" data-lin="0" data-ang="-2">Tourner D</button>
+      </div>
+      <div><button type="button" class="stop" id="btn-stop">STOP</button></div>
+      <hr />
+      <div>
+        <button onclick="nav('record_on')">Record ON</button>
+        <button onclick="nav('record_off')">Record OFF</button>
+        <button onclick="nav('clear')">Clear trajet</button>
+      </div>
+      <div>
+        <button onclick="nav('goto_start')">Aller depart</button>
+        <button onclick="nav('start_follow')">Follow trajet</button>
+        <button onclick="nav('start_patrol')">Patrol trajet</button>
+      </div>
+      <div>
+        <button onclick="nav('start_follow_slam')">Follow SLAM</button>
+        <button onclick="nav('start_patrol_slam')">Patrol SLAM</button>
+      </div>
+      <div>
+        <button onclick="nav('naive_on')">Naif ON</button>
+        <button onclick="nav('naive_off')">Naif OFF</button>
+        <button onclick="nav('stop')">Nav STOP</button>
+      </div>
+      <div class="mono" id="nav_state">nav_state=--</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h3>Lidar (radar simple)</h3>
+    <canvas id="radar" width="500" height="500"></canvas>
+  </div>
+  <div class="card" style="margin-top:16px;">
+    <h3>SLAM Map + Graph</h3>
+    <canvas id="slam" width="900" height="600"></canvas>
+    <div class="mono">cyan: map occupied | rouge: graph nodes | bleu: graph edges</div>
+  </div>
+
+  <script>
+    const st = { scan: [] };
+    let slamMapPts = [];
+    let slamGraphPts = [];
+    let slamGraphEdges = [];
+    const c = document.getElementById("radar");
+    const ctx = c.getContext("2d");
+    function drawRadar() {
+      const w = c.width, h = c.height, cx = w/2, cy = h/2;
+      ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
+      ctx.strokeStyle="#1f2937"; ctx.beginPath();
+      for (let r=50; r<=250; r+=50){ ctx.moveTo(cx+r,cy); ctx.arc(cx,cy,r,0,Math.PI*2); }
+      ctx.stroke();
+      const scale = 250/6000; // 6m max
+      ctx.fillStyle="#22d3ee";
+      for (const p of st.scan) {
+        const a = (p[0]-90) * Math.PI/180;
+        const d = p[1];
+        const x = cx + Math.cos(a) * d * scale;
+        const y = cy + Math.sin(a) * d * scale;
+        ctx.fillRect(x, y, 2, 2);
+      }
+      requestAnimationFrame(drawRadar);
+    }
+    drawRadar();
+
+    const sc = document.getElementById("slam");
+    const sctx = sc.getContext("2d");
+    function drawSlam() {
+      const w = sc.width, h = sc.height;
+      sctx.fillStyle = "#020617";
+      sctx.fillRect(0, 0, w, h);
+
+      const all = [];
+      for (const p of slamMapPts) all.push(p);
+      for (const p of slamGraphPts) all.push(p);
+      if (all.length === 0) {
+        requestAnimationFrame(drawSlam);
+        return;
+      }
+
+      let minX = all[0][0], maxX = all[0][0], minY = all[0][1], maxY = all[0][1];
+      for (const p of all) {
+        if (p[0] < minX) minX = p[0];
+        if (p[0] > maxX) maxX = p[0];
+        if (p[1] < minY) minY = p[1];
+        if (p[1] > maxY) maxY = p[1];
+      }
+      const dx = Math.max(0.1, maxX - minX);
+      const dy = Math.max(0.1, maxY - minY);
+      const margin = 20;
+      const sx = (w - 2 * margin) / dx;
+      const sy = (h - 2 * margin) / dy;
+      const k = Math.min(sx, sy);
+      const tx = margin - minX * k;
+      const ty = margin - minY * k;
+      const toPx = (x, y) => [tx + x * k, h - (ty + y * k)];
+
+      // map points
+      sctx.fillStyle = "rgba(34,211,238,0.45)";
+      for (const p of slamMapPts) {
+        const q = toPx(p[0], p[1]);
+        sctx.fillRect(q[0], q[1], 2, 2);
+      }
+
+      // graph edges
+      sctx.strokeStyle = "rgba(59,130,246,0.5)";
+      sctx.lineWidth = 1;
+      sctx.beginPath();
+      for (const e of slamGraphEdges) {
+        const a = toPx(e[0], e[1]);
+        const b = toPx(e[2], e[3]);
+        sctx.moveTo(a[0], a[1]);
+        sctx.lineTo(b[0], b[1]);
+      }
+      sctx.stroke();
+
+      // graph points
+      sctx.fillStyle = "rgba(239,68,68,0.9)";
+      for (const p of slamGraphPts) {
+        const q = toPx(p[0], p[1]);
+        sctx.fillRect(q[0] - 1, q[1] - 1, 3, 3);
+      }
+
+      requestAnimationFrame(drawSlam);
+    }
+    drawSlam();
+
+    /** Télémétrie (Lidar, IMU, SLAM…) via Docker. */
+    let wsUi = null;
+    let wsConnected = false;
+
+    const CMD_VEL_GAIN = 0.5;
+    /** Pivot pur : écart L/R plus fort. */
+    const ROTATION_DIFF_GAIN = 0.62;
+
+    /** Tant que tu gardes le bouton, v et w sont fixes → L et R identiques à chaque envoi : PWM stable (le MCU ne « multiplie » pas par la fréquence). */
+    function twistToLR(v, w) {
+      const vw = Math.abs(v) < 0.03 && Math.abs(w) > 0.02;
+      const g = vw ? ROTATION_DIFF_GAIN : CMD_VEL_GAIN;
+      const L = Math.max(-1, Math.min(1, v - g * w));
+      const R = Math.max(-1, Math.min(1, v + g * w));
+      return [L, R];
+    }
+
+    /**
+     * Maintien bouton : cadence de mise à jour de /cmd_vel.
+     * Le bridge ROS lisse ensuite l'envoi moteur vers le rover.
+     */
+    const CMD_HOLD_HZ = 20;
+    let cmdHoldTimer = null;
+    let cmdHoldLoop = null;
+    let motorHoldActive = false;
+
+    function cmdVelSend(l, a) {
+      if (wsUi && wsUi.readyState === WebSocket.OPEN) {
+        try {
+          wsUi.send(JSON.stringify({ type: "cmd_vel", linear_x: l, angular_z: a }));
+          return;
+        } catch (_) {}
+      }
+      fetch("/api/cmd_vel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linear_x: l, angular_z: a }),
+      }).catch(() => {});
+    }
+
+    function cmdVelHoldStop() {
+      if (!motorHoldActive) return;
+      motorHoldActive = false;
+      if (cmdHoldTimer !== null) {
+        clearTimeout(cmdHoldTimer);
+        cmdHoldTimer = null;
+      }
+      cmdHoldLoop = null;
+      cmdVelSend(0, 0);
+    }
+
+    function cmdVelHoldStart(l, a) {
+      cmdVelHoldStop();
+      motorHoldActive = true;
+      cmdVelSend(l, a);
+      const periodMs = 1000 / CMD_HOLD_HZ;
+      let next = performance.now() + periodMs;
+      cmdHoldLoop = [l, a];
+      function tick() {
+        if (!cmdHoldLoop) return;
+        cmdVelSend(cmdHoldLoop[0], cmdHoldLoop[1]);
+        next += periodMs;
+        const delay = Math.max(0, next - performance.now());
+        cmdHoldTimer = setTimeout(tick, delay);
+      }
+      cmdHoldTimer = setTimeout(tick, periodMs);
+    }
+
+    document.querySelectorAll(".hold-cmd").forEach((btn) => {
+      btn.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0 && e.button !== -1) return;
+        e.preventDefault();
+        const l = parseFloat(btn.dataset.lin);
+        const ang = parseFloat(btn.dataset.ang);
+        cmdVelHoldStart(l, ang);
+      });
+    });
+    ["pointerup", "pointercancel"].forEach((ev) => {
+      window.addEventListener(ev, () => cmdVelHoldStop());
+    });
+    ["blur", "visibilitychange"].forEach((ev) => {
+      window.addEventListener(ev, () => {
+        if (ev !== "visibilitychange" || document.hidden) cmdVelHoldStop();
+      });
+    });
+    document.getElementById("btn-stop").addEventListener("click", () => {
+      motorHoldActive = false;
+      if (cmdHoldTimer !== null) {
+        clearTimeout(cmdHoldTimer);
+        cmdHoldTimer = null;
+      }
+      cmdHoldLoop = null;
+      cmdVelSend(0, 0);
+    });
+    async function nav(cmd){
+      await fetch("/api/nav_control", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({cmd})});
+    }
+
+    function applyState(d) {
+      st.scan = d.scan || [];
+      if (d.rpy_deg){ r.textContent=d.rpy_deg.r.toFixed(2); p.textContent=d.rpy_deg.p.toFixed(2); y.textContent=d.rpy_deg.y.toFixed(2); }
+      if (d.acc_ms2){ ax.textContent=d.acc_ms2.x.toFixed(3); ay.textContent=d.acc_ms2.y.toFixed(3); az.textContent=d.acc_ms2.z.toFixed(3); }
+      if (d.gyro_dps){ gx.textContent=d.gyro_dps.x.toFixed(2); gy.textContent=d.gyro_dps.y.toFixed(2); gz.textContent=d.gyro_dps.z.toFixed(2); }
+      nav_state.textContent = d.nav_state || "nav_state=--";
+      slamMapPts = d.slam_map_points || [];
+      slamGraphPts = d.slam_graph_points || [];
+      slamGraphEdges = d.slam_graph_edges || [];
+    }
+
+    wsUi = new WebSocket(`ws://${location.host}/ws`);
+    wsUi.onopen = () => { wsConnected = true; };
+    wsUi.onmessage = (ev) => applyState(JSON.parse(ev.data));
+    wsUi.onclose = () => { wsConnected = false; };
+    wsUi.onerror = () => { wsConnected = false; };
+
+    // Fallback si WS indisponible (ex: dépendance websocket manquante côté serveur)
+    setInterval(async () => {
+      if (wsConnected) return;
+      try {
+        const res = await fetch("/api/state");
+        if (!res.ok) return;
+        const d = await res.json();
+        applyState(d);
+      } catch (_) {}
+    }, 250);
+  </script>
+</body>
+</html>
+

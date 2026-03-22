@@ -1,15 +1,35 @@
-#include "web_page.h"
 #include <WebSocketsServer.h>
-#include "lidar_ctrl.h" // Pour accéder aux points Lidar
-
-// WebServer sur port 80
-WebServer server(80);
+#include "lidar_ctrl.h"   // points Lidar. IMU (icm_*, ax_ms2, gx...) déjà dispo via ugv_config.h inclus dans le .ino
+extern double icm_yaw;   // cap IMU (degrés) pour estimateur / carte côté client
+extern double icm_roll, icm_pitch;
+extern double ax_ms2, ay_ms2, az_ms2;
+extern double gx, gy, gz;
 
 // WebSocket sur port 81
 WebSocketsServer webSocket = WebSocketsServer(81);
 
-void handleRoot(){
-  server.send(200, "text/html", index_html); //Send web page
+void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length) {
+  switch (type) {
+    case WStype_CONNECTED:
+      Serial.printf("WS client %u connected\n", num);
+      break;
+    case WStype_DISCONNECTED:
+      Serial.printf("WS client %u disconnected\n", num);
+      break;
+    case WStype_TEXT: {
+      // Commandes reçues en JSON via WebSocket (remplace /js HTTP)
+      DeserializationError err = deserializeJson(jsonCmdReceive, payload, length);
+      if (err == DeserializationError::Ok) {
+        jsonCmdReceiveHandler();
+      } else {
+        Serial.printf("WS JSON parse error: %s\n", err.c_str());
+      }
+      jsonCmdReceive.clear();
+      break;
+    }
+    default:
+      break;
+  }
 }
 
 // Tâche pour le Websocket (diffusion radar)
@@ -27,9 +47,19 @@ void websocketTask(void *parameter) {
       doc.clear(); 
       JsonArray pts = doc.createNestedArray("points");
       
-      // On envoie l'état réel d'urgence
-      doc["emergency"] = emergencyStopActive; 
-      
+      // On envoie l'état réel d'urgence + yaw pour estimateur/carte côté client (sans passer par VM)
+      doc["emergency"] = emergencyStopActive;
+      doc["r"] = (float)icm_roll;
+      doc["p"] = (float)icm_pitch;
+      doc["yaw"] = (float)icm_yaw;
+      doc["y"] = (float)icm_yaw;  // alias pour compat bridge ROS
+      doc["ax_ms2"] = (float)ax_ms2;
+      doc["ay_ms2"] = (float)ay_ms2;
+      doc["az_ms2"] = (float)az_ms2;
+      doc["gx"] = (float)gx;
+      doc["gy"] = (float)gy;
+      doc["gz"] = (float)gz;
+
       if (xSemaphoreTake(pointsMutex, 50) == pdTRUE) {
         for (int i = 0; i < 360; i++) {
           if (lidarPoints[i].valid) {
@@ -40,7 +70,7 @@ void websocketTask(void *parameter) {
         }
         xSemaphoreGive(pointsMutex);
       }
-      
+
       String output;
       serializeJson(doc, output);
       webSocket.broadcastTXT(output);
@@ -51,24 +81,8 @@ void websocketTask(void *parameter) {
 }
 
 void webCtrlServer(){
-  server.on("/", handleRoot);
-
-  server.on("/js", [](){
-    String jsonCmdWebString = server.arg(0);
-    deserializeJson(jsonCmdReceive, jsonCmdWebString);
-    jsonCmdReceiveHandler();
-    serializeJson(jsonInfoHttp, jsonFeedbackWeb);
-    server.send(200, "text/plane", jsonFeedbackWeb);
-    jsonFeedbackWeb = "";
-    jsonInfoHttp.clear();
-    jsonCmdReceive.clear();
-  });
-
-  // Start server
-  server.begin();
-  Serial.println("HTTP Server Starts.");
-
   // Start WebSocket
+  webSocket.onEvent(onWebSocketEvent);
   webSocket.begin();
   Serial.println("WebSocket Server Starts.");
   

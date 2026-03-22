@@ -1,0 +1,80 @@
+# SLAM Toolbox — config rover (topic /lidar_scan, frame base_link)
+# Basé sur mapper_params_online_async.yaml de slam_toolbox.
+# Scan ~5–8 cm, fluide mais moins sensible au bruit. Utiliser LIO pour limiter la dérive en rotation et en couloir.
+
+slam_toolbox:
+  ros__parameters:
+    # --- Solveur Ceres (optimisation du graphe de poses) ---
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY   # Résolution des systèmes linéaires
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
+
+    # --- Frames et topics ---
+    odom_frame: odom          # Repère odométrie (fourni par lidar_odom ou lio_odom)
+    map_frame: map            # Repère global ; SLAM publie TF map -> odom
+    base_frame: base_link     # Repère du robot (cohérent avec bridge + estimateur)
+    scan_topic: /lidar_scan   # Topic des scans (défaut slam_toolbox = /scan)
+    use_map_saver: true       # Permet de sauver la carte (service)
+    mode: mapping             # mapping = construire ; localization = localiser dans une carte existante
+
+    # --- Fréquence et délais ---
+    debug_logging: false
+    throttle_scans: 5         # Plus reactif que 6, tout en restant raisonnable
+    transform_publish_period: 0.02   # Période publication TF map->odom (s), 50 Hz
+    map_update_interval: 0.5 # Carte /map rafraichie plus souvent
+    resolution: 0.05          # Taille cellule grille (m), 5 cm
+    restamp_tf: false         # Ré-horodater les TF avec le temps du scan ; false en temps réel
+    # LiDAR (LD06) : portée 12 m, résolution 15 mm, 360° à 1°, 10 Hz scan / 4500 Hz mesures. Bridge peut limiter à 6 m (rover_bridge.py) ; ici 12 m pour utiliser toute la portée si le bridge envoie au-delà de 6 m
+    min_laser_range: 0.06     # Portée min (m) ; sous ~5 cm peu fiable
+    max_laser_range: 6.0      # Le bridge publie /lidar_scan avec range_max=6.0
+    minimum_time_interval: 0.2  # Integre plus souvent les scans valides
+    transform_timeout: 0.2    # Délai max (s) pour attendre une TF avant d’ignorer un scan
+    tf_buffer_duration: 30.0  # Durée (s) du buffer TF
+    stack_size_to_use: 40000000  # Taille pile (octets, ~40 Mo) pour le thread SLAM ; plus = évite stack overflow sur très grosses cartes, ne règle pas "queue is full"
+    enable_interactive_mode: true
+
+    # --- Quand intégrer un nouveau scan (anti-dérive) ---
+    use_scan_matching: true
+    use_scan_barycenter: true
+    minimum_travel_distance: 0.05   # Distance min (m) parcourue pour ajouter un scan ; 5 cm = fluide + filtre micro-mouvements
+    minimum_travel_heading: 0.10    # Rotation min (rad, ~7°) pour ajouter un scan
+    check_min_dist_and_heading_precisely: false  # true = vérification plus stricte (plus de CPU)
+
+    # --- Scan matching (liens entre scans) ---
+    scan_buffer_size: 15                    # Nombre de scans gardés en buffer
+    scan_buffer_maximum_scan_distance: 10.0 # Distance max (m) robot–scan pour garder en buffer
+    link_match_minimum_response_fine: 0.1  # Seuil qualité matching fin entre scans
+    link_scan_maximum_distance: 1.5         # Distance max (m) entre deux scans pour créer un lien
+
+    # --- Loop closure (fermeture de boucle quand tu reviens au même endroit) ---
+    loop_search_maximum_distance: 4.0  # Distance max (m) pour chercher des boucles ; un peu plus = plus de corrections en couloir
+    do_loop_closing: true
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+
+    # --- Recherche par corrélation ---
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+
+    # --- Espace de recherche pour les boucles ---
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+
+    # --- Pénalités et pas de recherche (scan matcher) ---
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+    fine_search_angle_offset: 0.00349   # Pas angle recherche fine (~0.2°)
+    coarse_search_angle_offset: 0.349  # Pas angle recherche grossière (~20°)
+    coarse_angle_resolution: 0.0349    # Résolution angulaire grossière (~2°)
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+    use_response_expansion: true   # Élargir la recherche si réponse insuffisante
+    min_pass_through: 2           # Nombre min de passes pour valider une solution
+    occupancy_threshold: 0.1     # Seuil (0–1) pour cellule occupée dans la grille

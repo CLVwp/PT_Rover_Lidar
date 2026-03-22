@@ -251,6 +251,21 @@ const char index_html[] PROGMEM = R"rawliteral(
     .status-dot { height: 10px; width: 10px; background: #ef4444; border-radius: 50%; display: inline-block; margin-right: 5px; }
     .connected { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
     .stats-overlay { font-family: monospace; color: #64748b; font-size: 12px; margin-bottom: 5px; }
+    /* Autonome + Carte */
+    #autonomous-section { background: rgba(30,41,59,0.6); border: 1px solid rgba(216,216,216,0.1); border-radius: 8px; padding: 16px; margin-top: 20px; }
+    .toggle-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .toggle-switch { position: relative; width: 52px; height: 28px; background: #475569; border-radius: 14px; cursor: pointer; }
+    .toggle-switch.on { background: #2698EA; }
+    .toggle-switch::after { content: ''; position: absolute; width: 22px; height: 22px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: transform 0.2s; }
+    .toggle-switch.on::after { transform: translateX(24px); }
+    .raycasts-box { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 10px 0; font-size: 11px; }
+    .raycast-cell { min-width: 42px; padding: 4px 6px; background: rgba(0,0,0,0.3); border-radius: 4px; text-align: center; }
+    .raycast-cell.low { background: rgba(239,68,68,0.4); color: #fca5a5; }
+    .raycast-cell.mid { background: rgba(234,179,8,0.3); color: #fde047; }
+    #map-section { text-align: center; margin-top: 12px; }
+    #map-canvas { display: block; margin: 0 auto; background: #0f172a; border: 1px solid #334155; border-radius: 8px; max-width: 95%; touch-action: none; cursor: grab; }
+    #map-canvas:active { cursor: grabbing; }
+    .map-legend { font-size: 11px; color: #94a3b8; margin-top: 4px; }
     </style>
 </head>
 <body>
@@ -400,248 +415,6 @@ const char index_html[] PROGMEM = R"rawliteral(
                 </div>
             </div>
         </section>
-        <section>
-            <div class="fb-info">
-                <h2 class="h2-tt" id="deviceInfo">Feedback infomation</h2>
-                <span id="fbInfo" word-wrap="break-all">Json feedback infomation shows here.</span>
-            </div>
-            <div class="fb-input-info">
-                <div class="feedb-p">
-                    <input type="text" id="jsonData" placeholder="Input json cmd here.">
-                    <label><button class="small-btn btn-send" onclick="jsonSend();">SEND</button></label>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>SPEED_CTRL: <span id="cmd1" class="cmd-value">{"T":1,"L":0.5,"R":0.5}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd1');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>PWM_INPUT: <span id="cmd11" class="cmd-value">{"T":11,"L":164,"R":164}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd11');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>ROS_CTRL: <span id="cmd13" class="cmd-value">{"T":13,"X":0.1,"Z":0.3}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd13');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>PID_SET: <span id="cmd2" class="cmd-value">{"T":2,"P":200,"I":2500,"D":0,"L":255}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd2');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>OLED_SET: <span id="cmd3" class="cmd-value">{"T":3,"lineNum":0,"Text":"putYourTextHere"}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd3');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>OLED_DEFAULT: <span id="cmd-3" class="cmd-value">{"T":-3}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd-3');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>CMD_MODULE_TYPE: <span id="cmd4" class="cmd-value">{"T":4,"cmd":0}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd4');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_EOAT_TYPE: <span id="cmd124" class="cmd-value">{"T":124,"mode":0}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd124');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_CONFIG_EOAT: <span id="cmd125" class="cmd-value">{"T":125,"pos":3,"ea":0,"eb":20}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd125');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>CMD_GET_IMU_DATA: <span id="cmd126" class="cmd-value">{"T":126}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd126');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>CMD_BASE_FEEDBACK: <span id="cmd130" class="cmd-value">{"T":130}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd130');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_BASE_FEEDBACK_FLOW: <span id="cmd131" class="cmd-value">{"T":131,"cmd":0}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd131');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>FEEDBACK_FLOW_INTERVAL: <span id="cmd142" class="cmd-value">{"T":142,"cmd":0}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd142');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_UART_ECHO_MODE: <span id="cmd143" class="cmd-value">{"T":143,"cmd":0}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd143');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_HEART_BEAT_SET: <span id="cmd136" class="cmd-value">{"T":136,"cmd":0}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd136');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>CMD_LED_CTRL: <span id="cmd132" class="cmd-value">{"T":132,"IO4":255,"IO5":255}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd132');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_GIMBAL_CTRL_SIMPLE: <span id="cmd133" class="cmd-value">{"T":133,"X":45,"Y":45,"SPD":0,"ACC":0}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd133');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_GIMBAL_CTRL_MOVE: <span id="cmd134" class="cmd-value">{"T":134,"X":45,"Y":45,"SX":300,"SY":300}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd134');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_GIMBAL_CTRL_STOP: <span id="cmd135" class="cmd-value">{"T":135}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd135');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_GIMBAL_STEADY: <span id="cmd137" class="cmd-value">{"T":137,"s":1,"y":0}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd137');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_GIMBAL_USER_CTRL: <span id="cmd141" class="cmd-value">{"T":141,"s":1,"y":0}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd141');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>CMD_SET_SPD_RATE: <span id="cmd138" class="cmd-value">{"T":138,"L":1,"R":1}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd138');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_GET_SPD_RATE: <span id="cmd139" class="cmd-value">{"T":139}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd139');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_SAVE_SPD_RATE: <span id="cmd140" class="cmd-value">{"T":140}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd140');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>CMD_MISSION_CONTENT: <span id="cmd221" class="cmd-value">{"T":221,"name":"mission_a"}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd221');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_APPEND_STEP_JSON: <span id="cmd222" class="cmd-value">{"T":222,"name":"mission_a","step":"{\"T\":137,\"s\":1,\"y\":0}"}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd222');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>CMD_BROADCAST_FOLLOWER: <span id="cmd300" class="cmd-value">{"T":300,"mode":1}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd300');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_ESP_NOW_CONFIG: <span id="cmd301" class="cmd-value">{"T":301,"mode":3}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd301');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_GET_MAC_ADDRESS: <span id="cmd302" class="cmd-value">{"T":302}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd302');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_ESP_NOW_ADD_FOLLOWER: <span id="cmd303" class="cmd-value">{"T":303,"mac":"FF:FF:FF:FF:FF:FF"}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd303');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_ESP_NOW_REMOVE_FOLLOWER: <span id="cmd304" class="cmd-value">{"T":304,"mac":"FF:FF:FF:FF:FF:FF"}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd304');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_ESP_NOW_GROUP_CTRL: <span id="cmd305" class="cmd-value">{"T":305,"dev":0,"b":0,"s":0,"e":1.57,"h":1.57,"cmd":0,"megs":"hello!"}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd305');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_ESP_NOW_SINGLE: <span id="cmd306" class="cmd-value">{"T":306,"mac":"FF:FF:FF:FF:FF:FF","dev":0,"b":0,"s":0,"e":1.57,"h":1.57,"cmd":0,"megs":"hello!"}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd306');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>CMD_WIFI_ON_BOOT: <span id="cmd401" class="cmd-value">{"T":401,"cmd":3}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd401');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_SET_AP: <span id="cmd402" class="cmd-value">{"T":402,"ssid":"UGV","password":"12345678"}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd402');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_SET_STA: <span id="cmd403" class="cmd-value">{"T":403,"ssid":"na","password":"ps"}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd403');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_WIFI_APSTA: <span id="cmd404" class="cmd-value">{"T":404,"ap_ssid":"UGV","ap_password":"12345678","sta_ssid":"na","sta_password":"ps"}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd404');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_WIFI_INFO: <span id="cmd405" class="cmd-value">{"T":405}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd405');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_WIFI_CONFIG_CREATE_BY_STATUS: <span id="cmd406" class="cmd-value">{"T":406}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd406');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_WIFI_CONFIG_CREATE_BY_INPUT: <span id="cmd406" class="cmd-value">{"T":407,"mode":3,"ap_ssid":"UGV","ap_password":"12345678","sta_ssid":"na","sta_password":"ps"}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd406');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_WIFI_STOP: <span id="cmd408" class="cmd-value">{"T":408}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd408');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>CMD_SET_SERVO_ID: <span id="cmd501" class="cmd-value">{"T":501,"raw":1,"new":11}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd501');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_SET_MIDDLE: <span id="cmd502" class="cmd-value">{"T":502,"id":11}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd502');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_SET_SERVO_PID: <span id="cmd503" class="cmd-value">{"T":503,"id":14,"p":16}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd503');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>CMD_REBOOT: <span id="cmd600" class="cmd-value">{"T":600}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd600');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_FREE_FLASH_SPACE: <span id="cmd601" class="cmd-value">{"T":601}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd601');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_BOOT_MISSION_INFO: <span id="cmd602" class="cmd-value">{"T":602}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd602');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_RESET_BOOT_MISSION: <span id="cmd603" class="cmd-value">{"T":603}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd603');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_NVS_CLEAR: <span id="cmd604" class="cmd-value">{"T":604}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd604');">INPUT</button>
-                    </div>
-                    <div>
-                        <p>CMD_INFO_PRINT: <span id="cmd605" class="cmd-value">{"T":605,"cmd":1}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd605');">INPUT</button>
-                    </div>
-                </div>
-                <div class="info-box json-cmd-info">
-                    <div>
-                        <p>CMD_MM_TYPE_SET: <span id="cmd900" class="cmd-value">{"T":900,"main":1,"module":0}</span></p>
-                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd900');">INPUT</button>
-                    </div>
-                </div>
-            </div>
-        </section>
         
         <!-- RADAR SECTION -->
         <section id="radar-section">
@@ -659,6 +432,30 @@ const char index_html[] PROGMEM = R"rawliteral(
             <span id="range-val">6m</span>
         </section>
 
+        <!-- AUTONOME + RAYCASTS + CARTE (calcul côté client = téléphone/PC, pas VM) -->
+        <section id="autonomous-section">
+            <h2 class="h2-tt">Mode autonome & Carte</h2>
+            <div class="toggle-row">
+                <span>Mode autonome</span>
+                <div id="autonomous-toggle" class="toggle-switch" onclick="toggleAutonomous();" title="Raycasts devant, avance si libre, évite obstacles"></div>
+                <span id="autonomous-label">OFF</span>
+            </div>
+            <div class="raycasts-box" id="raycasts-box">
+                <span class="raycast-cell" data-angle="-45">-45°: --</span>
+                <span class="raycast-cell" data-angle="-30">-30°: --</span>
+                <span class="raycast-cell" data-angle="-15">-15°: --</span>
+                <span class="raycast-cell" data-angle="0">0°: --</span>
+                <span class="raycast-cell" data-angle="15">15°: --</span>
+                <span class="raycast-cell" data-angle="30">30°: --</span>
+                <span class="raycast-cell" data-angle="45">45°: --</span>
+            </div>
+            <p class="stats-overlay">Rayons = orientation uniquement (centrage + courbure murs). Obstacle frontal &lt; 400 mm → recul/tourne. Trajectoire = arc courbe. Carte = repère terrestre.</p>
+            <div id="map-section">
+                <canvas id="map-canvas" width="800" height="600"></canvas>
+                <p class="map-legend">Glisser pour déplacer · Molette pour zoom · <button type="button" class="small-btn" onclick="clearMap();">Effacer la carte</button> <button type="button" class="small-btn" onclick="resetMapView();">Recentrer</button></p>
+            </div>
+        </section>
+
     </main>
 <script>
     // --- RADAR LOGIC ---
@@ -671,6 +468,39 @@ const char index_html[] PROGMEM = R"rawliteral(
     let points = [];
     let frames = 0;
     let lastTime = performance.now();
+    let lastYaw = 0;
+    let autonomousMode = false;
+    let autonomousIntervalId = null;
+    const OBSTACLE_MM = 400;
+    const MAX_RAY_MM = 2500;
+    const RAYCAST_ANGLES = [-45, -30, -15, 0, 15, 30, 45];
+    const RAYCAST_ANGLES_FRONT = [-15, 0, 15];
+    const ROBOT_BODY_MM = 80;
+    const LIDAR_TO_REAR_MM = 25;
+    const BOX_HALF_X_MM = 95;
+    const BOX_HALF_Y_MM = 90;
+    const PATH_PREDICT_STEP_M = 0.15;
+    const PATH_PREDICT_N = 20;
+    const PATH_PREDICT_TIME = 1.2;
+    let lastTrajectoryArc = [];
+    let lastTrajectoryTime = 0;
+    const TRAJECTORY_PERSIST_MS = 600;
+    let lastPlannedKappa = 0;
+    const TRACK_CURVATURE_GAIN = 0.28;
+    let pose = { x: 0, y: 0, yaw: 0 };
+    let mapPoints = [];
+    let mapOccupiedCells = new Set();
+    let lastSentL = 0, lastSentR = 0, lastSentTime = 0;
+    const POSE_SPEED_SCALE = 0.12;
+    const MAP_MAX_POINTS = 800000;
+    const MAP_CELL_M = 0.025;
+    const MAP_SCALE_PX = 80;
+    let mapPanX = 0, mapPanY = 0, mapZoom = 1;
+    let mapDragging = false, mapLastX = 0, mapLastY = 0;
+    let mapPinchStartDist = 0, mapPinchStartZoom = 1;
+    let autonomousPhase = 'drive';
+    let lastPlannedAngle = 0;
+    let lastPlannedMagnitude = 0;
 
     rangeSlider.oninput = function() {
         maxDist = this.value * 1000;
@@ -694,6 +524,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         ws.onmessage = (e) => {
             try {
                 const data = JSON.parse(e.data);
+                if (data.yaw != null) lastYaw = data.yaw;
                 if(data.emergency) {
                     document.getElementById('ws-text').textContent = "⚠️ STOP OBSTACLE";
                     document.getElementById('ws-text').style.color = "red";
@@ -701,9 +532,19 @@ const char index_html[] PROGMEM = R"rawliteral(
                     document.getElementById('ws-text').textContent = "En ligne";
                     document.getElementById('ws-text').style.color = "#e2e8f0";
                 }
-                if(data.points) processPoints(data.points);
+                if(data.points) {
+                    processPoints(data.points);
+                    if (autonomousMode) updateMapFromPoints(data.points);
+                }
             } catch(err) {}
         };
+    }
+
+    function isPointInsideRobotBody(a_deg, d_mm) {
+        const ar = a_deg * Math.PI / 180;
+        const x = d_mm * Math.cos(ar);
+        const y = d_mm * Math.sin(ar);
+        return (x >= -BOX_HALF_X_MM && x <= BOX_HALF_X_MM && y >= -BOX_HALF_Y_MM && y <= BOX_HALF_Y_MM);
     }
 
     function processPoints(raw) {
@@ -764,9 +605,45 @@ const char index_html[] PROGMEM = R"rawliteral(
         ctx.lineTo(cx + Math.cos(-Math.PI/2 + Math.PI/6)*safeR, cy + Math.sin(-Math.PI/2 + Math.PI/6)*safeR);
         ctx.stroke();
 
+        // Rectangle zone à ignorer: +5 cm devant, +2 cm chaque côté (lidar au centre)
+        const rx = cx - BOX_HALF_Y_MM * scale;
+        const ry = cy - BOX_HALF_X_MM * scale;
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(rx, ry, (2 * BOX_HALF_Y_MM) * scale, (2 * BOX_HALF_X_MM) * scale);
+
+        // Raycasts autonome (limite MAX_RAY_MM pour rester centré en couloir)
+        const ray = getRaycastsInFront();
+        RAYCAST_ANGLES.forEach(function(a) {
+            const rad = (a - 90) * Math.PI / 180;
+            const rawDist = (ray[a] !== undefined && ray[a] < 99999) ? ray[a] : 99999;
+            const dist = Math.min(rawDist, MAX_RAY_MM);
+            const r = Math.min(dist, maxDist) * scale;
+            const ex = cx + Math.cos(rad) * r;
+            const ey = cy + Math.sin(rad) * r;
+            const inZone = rawDist < MAX_RAY_MM && rawDist < OBSTACLE_MM;
+            ctx.strokeStyle = inZone ? 'rgba(239, 68, 68, 0.8)' : 'rgba(34, 211, 238, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(ex, ey);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.font = '10px sans-serif';
+            ctx.fillText(a + '°', ex + (Math.cos(rad) * 12), ey + (Math.sin(rad) * 12));
+        });
+        const maxRayR = MAX_RAY_MM * scale;
+        ctx.strokeStyle = 'rgba(100, 116, 139, 0.4)';
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, maxRayR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
         ctx.fillStyle = '#22d3ee'; 
         for(let p of points) {
             if(p.d > maxDist) continue;
+            if (isPointInsideRobotBody(p.a, p.d)) continue;
             const rad = (p.a - 90) * Math.PI/180;
             const r = p.d * scale;
             const x = cx + Math.cos(rad) * r;
@@ -780,13 +657,350 @@ const char index_html[] PROGMEM = R"rawliteral(
         ctx.beginPath();
         ctx.arc(cx, cy, 5, 0, Math.PI*2);
         ctx.fill();
-        
+
+        // Trajectoire prévue PAR-DESSUS (dernier dessin = visible)
+        const arc = getTrajectoryArcRover();
+        if (arc.length > 0) {
+            const trajScale = (w / 2) / 1.2;
+            ctx.strokeStyle = 'rgba(34, 197, 94, 1)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            for (let i = 0; i < arc.length; i++) {
+                const px = cx + arc[i].y * trajScale;
+                const py = cy - arc[i].x * trajScale;
+                ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(34, 197, 94, 1)';
+            for (let i = 0; i < arc.length; i++) {
+                const px = cx + arc[i].y * trajScale;
+                const py = cy - arc[i].x * trajScale;
+                ctx.beginPath();
+                ctx.arc(px, py, 6, 0, Math.PI*2);
+                ctx.fill();
+            }
+        }
+
         requestAnimationFrame(drawRadar);
+    }
+
+    function getRaycastsInFront() {
+        const sectorHalf = 10;
+        const out = {};
+        RAYCAST_ANGLES.forEach(a => { out[a] = 99999; });
+        for (let i = 0; i < points.length; i += 1) {
+            const p = points[i];
+            if (isPointInsideRobotBody(p.a, p.d)) continue;
+            const deg = p.a > 180 ? p.a - 360 : p.a;
+            if (Math.abs(deg) > 55) continue;
+            for (const a of RAYCAST_ANGLES) {
+                if (Math.abs(deg - a) <= sectorHalf && p.d > 0 && p.d < out[a]) out[a] = p.d;
+            }
+        }
+        return out;
+    }
+
+    function sendMotionCmd(l, r) {
+        left_speed = l * speed_rate;
+        right_speed = r * speed_rate;
+        send_heartbeat = 1;
+        lastSentL = l;
+        lastSentR = r;
+        lastSentTime = Date.now();
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "js?json=" + encodeURIComponent(JSON.stringify({ "T": 1, "L": left_speed, "R": right_speed })), true);
+        xhr.send();
+    }
+
+    function autonomousLoop() {
+        if (!autonomousMode) return;
+        const ray = getRaycastsInFront();
+        const eff = (a) => Math.min(ray[a] === 99999 ? 99999 : ray[a], MAX_RAY_MM);
+        let minDistFront = 99999;
+        RAYCAST_ANGLES_FRONT.forEach(a => {
+            const d = ray[a] === 99999 ? 99999 : ray[a];
+            if (d < MAX_RAY_MM && d < minDistFront) minDistFront = d;
+        });
+        const cells = document.querySelectorAll('.raycast-cell');
+        RAYCAST_ANGLES.forEach((a, i) => {
+            const d = ray[a];
+            const mm = d === 99999 ? '>' + (MAX_RAY_MM/1000).toFixed(1) + 'm' : (d + '');
+            cells[i].textContent = a + '°: ' + mm;
+            cells[i].classList.remove('low', 'mid');
+            if (d < MAX_RAY_MM && d < OBSTACLE_MM) cells[i].classList.add('low');
+            else if (d < MAX_RAY_MM && d < 800) cells[i].classList.add('mid');
+        });
+        const frontBlocked = minDistFront < OBSTACLE_MM;
+        if (frontBlocked) {
+            let bestAngle = 0;
+            RAYCAST_ANGLES.forEach(a => { if (eff(a) > eff(bestAngle)) bestAngle = a; });
+            const turn = bestAngle < 0 ? -0.35 : 0.35;
+            sendMotionCmd(turn, -turn);
+            lastPlannedKappa = turn / TRACK_CURVATURE_GAIN;
+            lastPlannedAngle = bestAngle;
+            lastPlannedMagnitude = 0.35;
+        } else {
+            autonomousPhase = 'drive';
+            const leftClear = (eff(-45) + eff(-30) + eff(-15)) / 3;
+            const rightClear = (eff(15) + eff(30) + eff(45)) / 3;
+            const leftSlope = (eff(-15) - eff(-45)) / 30;
+            const rightSlope = (eff(15) - eff(45)) / 30;
+            const kappaCenter = (leftClear - rightClear) * 0.00035;
+            const kappaSlope = (leftSlope - rightSlope) * 0.0008;
+            let kappa = kappaCenter + kappaSlope;
+            kappa = Math.max(-0.9, Math.min(0.9, kappa));
+            lastPlannedKappa = kappa;
+            const base = 0.4;
+            const bl = Math.max(0.12, Math.min(0.5, base - kappa * TRACK_CURVATURE_GAIN));
+            const br = Math.max(0.12, Math.min(0.5, base + kappa * TRACK_CURVATURE_GAIN));
+            sendMotionCmd(bl, br);
+            lastPlannedAngle = Math.atan2(br - bl, br + bl) * 180 / Math.PI;
+            lastPlannedMagnitude = (bl + br) / 2;
+        }
+    }
+
+    function updateMapFromPoints(rawPoints) {
+        const now = Date.now();
+        const yawRad = lastYaw * Math.PI / 180;
+        if (lastSentTime > 0) {
+            const dt = (now - lastSentTime) / 1000;
+            const v = (lastSentL + lastSentR) / 2 * speed_rate * POSE_SPEED_SCALE;
+            const yawPrev = pose.yaw;
+            pose.x += v * dt * Math.cos(yawPrev);
+            pose.y += v * dt * Math.sin(yawPrev);
+        }
+        pose.yaw = yawRad;
+        for (let i = 0; i < rawPoints.length; i += 2) {
+            const a = rawPoints[i], d = rawPoints[i + 1];
+            if (d < 50 || d > 8000) continue;
+            if (isPointInsideRobotBody(a, d)) continue;
+            const ar = a * Math.PI / 180;
+            const rx = (d / 1000) * Math.cos(ar);
+            const ry = (d / 1000) * Math.sin(ar);
+            const wx = pose.x + Math.cos(pose.yaw) * rx - Math.sin(pose.yaw) * ry;
+            const wy = pose.y + Math.sin(pose.yaw) * rx + Math.cos(pose.yaw) * ry;
+            const ci = Math.floor(wx / MAP_CELL_M);
+            const cj = Math.floor(wy / MAP_CELL_M);
+            const cellKey = ci + ',' + cj;
+            if (mapOccupiedCells.has(cellKey)) continue;
+            mapOccupiedCells.add(cellKey);
+            mapPoints.push({ x: wx, y: wy });
+            if (mapPoints.length > MAP_MAX_POINTS) mapPoints.splice(0, 5000);
+        }
+    }
+
+    function getTrajectoryArcRover() {
+        const pts = [];
+        let v, k;
+        if (autonomousMode) {
+            v = lastPlannedMagnitude * speed_rate * POSE_SPEED_SCALE;
+            k = lastPlannedKappa;
+        } else {
+            v = (lastSentL + lastSentR) / 2 * speed_rate * POSE_SPEED_SCALE;
+            k = (Math.abs(lastSentL + lastSentR) < 0.01) ? 0 : (lastSentR - lastSentL) / (2 * TRACK_CURVATURE_GAIN);
+        }
+        if (v < 0.02 && Math.abs(k) < 0.05) {
+            if (lastTrajectoryArc.length > 0 && (Date.now() - lastTrajectoryTime) < TRAJECTORY_PERSIST_MS)
+                return lastTrajectoryArc;
+            return [];
+        }
+        if (v < 0.02) v = 0.06;
+        const n = PATH_PREDICT_N;
+        const step = (v * PATH_PREDICT_TIME) / n;
+        for (let i = 1; i <= n; i++) {
+            const s = step * i;
+            let rx, ry;
+            if (Math.abs(k) < 0.02) {
+                rx = s;
+                ry = 0;
+            } else {
+                const th = k * s;
+                rx = Math.sin(th) / k;
+                ry = (1 - Math.cos(th)) / k;
+            }
+            pts.push({ x: rx, y: ry });
+        }
+        lastTrajectoryArc = pts;
+        lastTrajectoryTime = Date.now();
+        return pts;
+    }
+
+    function getPathPointsWorld() {
+        const arc = getTrajectoryArcRover();
+        const out = [];
+        const c = Math.cos(pose.yaw);
+        const s = Math.sin(pose.yaw);
+        for (let i = 0; i < arc.length; i++) {
+            const rx = arc[i].x, ry = arc[i].y;
+            out.push({
+                x: pose.x + c * rx - s * ry,
+                y: pose.y + s * rx + c * ry
+            });
+        }
+        return out;
+    }
+
+    function drawMap() {
+        const mc = document.getElementById('map-canvas');
+        if (!mc) return;
+        const mctx = mc.getContext('2d');
+        const cw = mc.width, ch = mc.height;
+        const cx = cw / 2, cy = ch / 2;
+        const sc = MAP_SCALE_PX * mapZoom;
+        const ox = cx + mapPanX;
+        const oy = cy + mapPanY;
+        mctx.fillStyle = '#0f172a';
+        mctx.fillRect(0, 0, cw, ch);
+        mctx.fillStyle = 'rgba(34, 211, 238, 0.45)';
+        for (let i = 0; i < mapPoints.length; i++) {
+            const px = ox + mapPoints[i].x * sc;
+            const py = oy - mapPoints[i].y * sc;
+            if (px >= -2 && px < cw + 2 && py >= -2 && py < ch + 2) {
+                mctx.fillRect(Math.round(px), Math.round(py), Math.max(1, Math.round(2 * mapZoom)), Math.max(1, Math.round(2 * mapZoom)));
+            }
+        }
+        const pathPts = getTrajectoryArcRover().length > 0 ? getPathPointsWorld() : [];
+        if (pathPts.length > 0) {
+            mctx.strokeStyle = 'rgba(34, 197, 94, 0.95)';
+            mctx.lineWidth = Math.max(1, 2 * mapZoom);
+            mctx.beginPath();
+            mctx.moveTo(ox + pose.x * sc, oy - pose.y * sc);
+            for (let i = 0; i < pathPts.length; i++) {
+                mctx.lineTo(ox + pathPts[i].x * sc, oy - pathPts[i].y * sc);
+            }
+            mctx.stroke();
+            mctx.fillStyle = 'rgba(34, 197, 94, 0.95)';
+            for (let i = 0; i < pathPts.length; i++) {
+                const px = ox + pathPts[i].x * sc;
+                const py = oy - pathPts[i].y * sc;
+                if (px >= -10 && px < cw + 10 && py >= -10 && py < ch + 10) {
+                    mctx.beginPath();
+                    mctx.arc(px, py, Math.max(2, 4 * mapZoom), 0, Math.PI*2);
+                    mctx.fill();
+                }
+            }
+        }
+        mctx.save();
+        mctx.translate(ox + pose.x * sc, oy - pose.y * sc);
+        mctx.rotate(-pose.yaw);
+        mctx.fillStyle = '#2698EA';
+        mctx.strokeStyle = '#1e40af';
+        mctx.lineWidth = 1;
+        mctx.beginPath();
+        mctx.moveTo(12, 0);
+        mctx.lineTo(-8, -6);
+        mctx.lineTo(-8, 6);
+        mctx.closePath();
+        mctx.fill();
+        mctx.stroke();
+        mctx.restore();
+        mctx.fillStyle = 'rgba(148, 163, 184, 0.9)';
+        mctx.font = '11px sans-serif';
+        mctx.fillText('Zoom: ' + mapZoom.toFixed(1) + ' · ' + mapPoints.length + ' pts', 8, ch - 6);
+        requestAnimationFrame(drawMap);
+    }
+
+    function resetMapView() {
+        mapPanX = 0;
+        mapPanY = 0;
+        mapZoom = 1;
+    }
+
+    function setupMapNav() {
+        const mc = document.getElementById('map-canvas');
+        if (!mc) return;
+        mc.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const d = e.deltaY > 0 ? -0.15 : 0.15;
+            mapZoom = Math.max(0.2, Math.min(5, mapZoom * (1 + d)));
+        }, { passive: false });
+        mc.addEventListener('mousedown', function(e) {
+            if (e.button === 0) { mapDragging = true; mapLastX = e.clientX; mapLastY = e.clientY; }
+        });
+        mc.addEventListener('mousemove', function(e) {
+            if (mapDragging) {
+                mapPanX += e.clientX - mapLastX;
+                mapPanY += e.clientY - mapLastY;
+                mapLastX = e.clientX;
+                mapLastY = e.clientY;
+            }
+        });
+        mc.addEventListener('mouseup', function(e) { if (e.button === 0) mapDragging = false; });
+        mc.addEventListener('mouseleave', function() { mapDragging = false; });
+        function dist2(a, b) {
+            return (a.clientX - b.clientX) ** 2 + (a.clientY - b.clientY) ** 2;
+        }
+        mc.addEventListener('touchstart', function(e) {
+            if (e.touches.length === 1) {
+                mapDragging = true;
+                mapLastX = e.touches[0].clientX;
+                mapLastY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                mapDragging = false;
+                mapPinchStartDist = Math.sqrt(dist2(e.touches[0], e.touches[1]));
+                mapPinchStartZoom = mapZoom;
+            }
+        }, { passive: true });
+        mc.addEventListener('touchmove', function(e) {
+            if (e.touches.length === 2) {
+                const d = Math.sqrt(dist2(e.touches[0], e.touches[1]));
+                if (mapPinchStartDist > 0) {
+                    mapZoom = Math.max(0.2, Math.min(5, mapPinchStartZoom * (d / mapPinchStartDist)));
+                }
+            } else if (e.touches.length === 1 && mapDragging) {
+                mapPanX += e.touches[0].clientX - mapLastX;
+                mapPanY += e.touches[0].clientY - mapLastY;
+                mapLastX = e.touches[0].clientX;
+                mapLastY = e.touches[0].clientY;
+            }
+        }, { passive: true });
+        mc.addEventListener('touchend', function(e) {
+            if (e.touches.length === 0) { mapDragging = false; mapPinchStartDist = 0; }
+            else if (e.touches.length === 1) {
+                mapDragging = true;
+                mapLastX = e.touches[0].clientX;
+                mapLastY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                mapPinchStartDist = Math.sqrt(dist2(e.touches[0], e.touches[1]));
+                mapPinchStartZoom = mapZoom;
+            }
+        }, { passive: true });
+    }
+
+    function clearMap() {
+        mapPoints = [];
+        mapOccupiedCells = new Set();
+        pose = { x: 0, y: 0, yaw: 0 };
+        lastSentTime = 0;
+        autonomousPhase = 'drive';
+        resetMapView();
+    }
+
+    function toggleAutonomous() {
+        autonomousMode = !autonomousMode;
+        const el = document.getElementById('autonomous-toggle');
+        const label = document.getElementById('autonomous-label');
+        if (autonomousMode) {
+            el.classList.add('on');
+            label.textContent = 'ON';
+            sendMotionCmd(0, 0);
+            autonomousIntervalId = setInterval(autonomousLoop, 120);
+        } else {
+            el.classList.remove('on');
+            label.textContent = 'OFF';
+            if (autonomousIntervalId) clearInterval(autonomousIntervalId);
+            autonomousPhase = 'drive';
+            lastPlannedMagnitude = 0;
+            sendMotionCmd(0, 0);
+        }
     }
 
     connectWs();
     drawRadar();
-    
+    drawMap();
+    setupMapNav();
+
     // --- END RADAR LOGIC ---
 
     var cmdA;
@@ -840,21 +1054,6 @@ const char index_html[] PROGMEM = R"rawliteral(
         infoUpdate();
     }, 1000);
 
-    function cmdFill(rawInfo, fillInfo) {
-        document.getElementById(rawInfo).value = document.getElementById(fillInfo).innerHTML;
-    }
-    function jsonSend() {
-        send_heartbeat = 0;
-        var xhttp = new XMLHttpRequest();
-        xhttp.onreadystatechange = function() {
-            if (this.readyState == 4 && this.status == 200) {
-              document.getElementById("fbInfo").innerHTML =
-              this.responseText;
-            }
-        };
-        xhttp.open("GET", "js?json="+document.getElementById('jsonData').value, true);
-        xhttp.send();
-    }
     function infoUpdate() {
         var jsonCmd = {
             "T": 130
@@ -932,6 +1131,9 @@ const char index_html[] PROGMEM = R"rawliteral(
     }
     function heartBeat() {
         if (send_heartbeat == 1) {
+            lastSentL = left_speed / speed_rate;
+            lastSentR = right_speed / speed_rate;
+            lastSentTime = Date.now();
             var jsonCmd = {
                 "T":1,
                 "L":left_speed,
@@ -947,6 +1149,9 @@ const char index_html[] PROGMEM = R"rawliteral(
         left_speed  = spdL*speed_rate;
         right_speed = spdR*speed_rate;
         send_heartbeat = 1;
+        lastSentL = spdL;
+        lastSentR = spdR;
+        lastSentTime = Date.now();
         var jsonCmd = {
             "T":1,
             "L":left_speed,
@@ -1132,14 +1337,10 @@ const char index_html[] PROGMEM = R"rawliteral(
             // alert ("S down");
             backwardButton = 1;
             fbNewer = 2;
-        }else if (e && e.keyCode == 68) {
+        }        else if (e && e.keyCode == 68) {
             // alert ("D down");
             rightButton = 1;
             lrNewer = 2;
-        }
-        else if (e && e.keyCode == 13) {
-            // alert ("Enter down");
-            jsonSend();
         }
         else if (e && e.keyCode == 37) {
             // alert ("left down");
