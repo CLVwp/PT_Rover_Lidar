@@ -1,3 +1,4 @@
+#include <WebServer.h>
 #include <WebSocketsServer.h>
 #include "lidar_ctrl.h"   // points Lidar. IMU (icm_*, ax_ms2, gx...) déjà dispo via ugv_config.h inclus dans le .ino
 extern double icm_yaw;   // cap IMU (degrés) pour estimateur / carte côté client
@@ -5,8 +6,66 @@ extern double icm_roll, icm_pitch;
 extern double ax_ms2, ay_ms2, az_ms2;
 extern double gx, gy, gz;
 
+WebServer httpServer(80);
 // WebSocket sur port 81
 WebSocketsServer webSocket = WebSocketsServer(81);
+
+String buildHttpJsonResponse() {
+  if (jsonInfoHttp.isNull() || jsonInfoHttp.size() == 0) {
+    StaticJsonDocument<96> okDoc;
+    okDoc["ok"] = true;
+    String okOut;
+    serializeJson(okDoc, okOut);
+    return okOut;
+  }
+  String output;
+  serializeJson(jsonInfoHttp, output);
+  return output;
+}
+
+void handleJsRequest() {
+  if (!httpServer.hasArg("json")) {
+    httpServer.send(400, "application/json", "{\"ok\":false,\"error\":\"missing json\"}");
+    return;
+  }
+
+  const String rawJson = httpServer.arg("json");
+  jsonCmdReceive.clear();
+  jsonInfoHttp.clear();
+
+  DeserializationError err = deserializeJson(jsonCmdReceive, rawJson);
+  if (err != DeserializationError::Ok) {
+    String errorOut = String("{\"ok\":false,\"error\":\"") + err.c_str() + "\"}";
+    httpServer.send(400, "application/json", errorOut);
+    jsonCmdReceive.clear();
+    return;
+  }
+
+  const int cmdType = jsonCmdReceive["T"] | 0;
+
+  switch (cmdType) {
+    case CMD_BASE_FEEDBACK:
+      inaDataUpdate();
+      baseInfoFeedback();
+      break;
+    case CMD_WIFI_INFO:
+      wifiStatusFeedback();
+      break;
+    case CMD_GET_IMU_DATA:
+      getIMUData();
+      break;
+    case CMD_LIDAR_STATUS:
+      getLidarStatus();
+      break;
+    default:
+      jsonCmdReceiveHandler();
+      break;
+  }
+
+  httpServer.send(200, "application/json", buildHttpJsonResponse());
+  jsonCmdReceive.clear();
+  jsonInfoHttp.clear();
+}
 
 void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length) {
   switch (type) {
@@ -81,6 +140,13 @@ void websocketTask(void *parameter) {
 }
 
 void webCtrlServer(){
+  httpServer.on("/", HTTP_GET, []() {
+    httpServer.send(200, "text/plain", "PT Rover HTTP server ready");
+  });
+  httpServer.on("/js", HTTP_GET, handleJsRequest);
+  httpServer.begin();
+  Serial.println("HTTP Server Starts.");
+
   // Start WebSocket
   webSocket.onEvent(onWebSocketEvent);
   webSocket.begin();
@@ -95,4 +161,8 @@ void webCtrlServer(){
 
 void initHttpWebServer(){
   webCtrlServer();
+}
+
+void httpServerLoop() {
+  httpServer.handleClient();
 }

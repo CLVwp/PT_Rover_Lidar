@@ -238,6 +238,11 @@
  C:/Users/viell/.platformio/packages/framework-arduinoespressif32/cores/esp32/HardwareSerial.h \
  src/files_ctrl.h src/ugv_advance.h src/wifi_ctrl.h src/esp_now_ctrl.h \
  src/uart_ctrl.h src/http_server.h \
+ C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/WebServer.h \
+ C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/HTTP_Method.h \
+ C:/Users/viell/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/nghttp/port/include/http_parser.h \
+ C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/Uri.h \
+ C:/Users/viell/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/detail/RequestHandler.h \
  .pio/libdeps/esp32doit-devkit-v1/WebSockets/src/WebSocketsServer.h \
  .pio/libdeps/esp32doit-devkit-v1/WebSockets/src/WebSockets.h \
  .pio/libdeps/esp32doit-devkit-v1/WebSockets/src/WebSocketsVersion.h \

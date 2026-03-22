@@ -235,6 +235,7 @@ void setup() {
 
 
 void loop() {
+  httpServerLoop();
   serialCtrl();
 
   // read and compute the info of joints.

@@ -8,3 +8,5 @@
 ros2_bridge/bags/
 ros2_bridge/.record.pid
 ros2_bridge/.venv/
+__pycache__/
+*.pyc

@@ -11,6 +11,8 @@ import math
 import os
 import socket
 import threading
+import urllib.parse
+import urllib.request
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import SingleThreadedExecutor
@@ -44,6 +46,7 @@ def _resolve_ipv4(host: str) -> str:
 
 ROVER_IP_V4 = _resolve_ipv4(ROVER_IP)
 LIDAR_WS_URL = f"ws://{ROVER_IP_V4}:81"
+ROVER_HTTP_PORT = int(os.environ.get("ROVER_HTTP_PORT", "80"))
 DEG_TO_RAD = math.pi / 180.0
 # Même T que json_cmd.h / rover_cmd (vitesses L/R dans [-2, 2])
 CMD_SPEED_T = 1
@@ -100,68 +103,75 @@ class RoverBridge(Node):
         self._cmd_vel_timeout_s = float(os.environ.get("CMD_VEL_TIMEOUT_S", "0.65"))
         self._last_cmd_vel_time_ns = None
         self._cmd_vel_stopped_sent = True  # au démarrage on n'envoie pas stop
-        self._cmd_vel_timer = self.create_timer(0.1, self._cmd_vel_timeout_cb)
-        # Dernière commande moteur seule (pas de file) : évite les rafales JSON vers l'ESP si ROS spamme.
-        self._motor_lock = threading.Lock()
-        self._motor_latest = None  # dict {"T","L","R"} ou None
+        self._cmd_vel_timer = self.create_timer(0.05, self._cmd_vel_timeout_cb)
+        self._motor_http_lock = threading.Lock()
+        self._motor_http_latest = None
+        self._motor_http_event = threading.Event()
+        self._motor_http_thread = threading.Thread(target=self._motor_http_worker, daemon=True)
+        self._motor_http_thread.start()
 
         self.get_logger().info(
-            "RoverBridge initialisé (WS LiDAR+IMU synchronisés, TF + /cmd_vel -> rover)"
+            "RoverBridge initialisé (WS LiDAR+IMU, commandes moteur HTTP /js)"
         )
 
-    def _queue_motor_lr(self, L: float, R: float) -> None:
+    def _queue_motor_lr(self, L: float, R: float, force: bool = False) -> None:
         L = max(-2.0, min(2.0, float(L)))
         R = max(-2.0, min(2.0, float(R)))
-        with self._motor_lock:
-            self._motor_latest = {"T": CMD_SPEED_T, "L": L, "R": R}
+        payload = {"T": CMD_SPEED_T, "L": L, "R": R}
+        with self._motor_http_lock:
+            if (not force) and self._motor_http_latest == payload:
+                return
+            self._motor_http_latest = payload
+        self._motor_http_event.set()
 
-    async def _flush_motor_queue(self, ws) -> None:
-        with self._motor_lock:
-            payload = self._motor_latest
-        if payload is None:
-            return
-        try:
-            await ws.send(json.dumps(payload, separators=(",", ":")))
-        except Exception as e:
-            self.get_logger().warn(f"Envoi commande moteur WS: {type(e).__name__}: {e!r}")
+    def _motor_http_url(self, payload: dict) -> str:
+        raw = json.dumps(payload, separators=(",", ":"))
+        query = urllib.parse.quote(raw, safe="")
+        if ROVER_HTTP_PORT == 80:
+            return f"http://{ROVER_IP_V4}/js?json={query}"
+        return f"http://{ROVER_IP_V4}:{ROVER_HTTP_PORT}/js?json={query}"
 
-    async def _motor_tick_loop(self, ws) -> None:
-        try:
-            while True:
-                # 10 ms : garder une cadence d’envoi moteur même si le traitement LiDAR est lourd.
-                await asyncio.sleep(0.01)
-                await self._flush_motor_queue(ws)
-        except asyncio.CancelledError:
-            raise
+    def _send_motor_http(self, payload: dict) -> None:
+        req = urllib.request.Request(self._motor_http_url(payload), method="GET")
+        with urllib.request.urlopen(req, timeout=0.2) as resp:
+            resp.read()
+
+    def _motor_http_worker(self) -> None:
+        while True:
+            self._motor_http_event.wait()
+            self._motor_http_event.clear()
+            with self._motor_http_lock:
+                payload = self._motor_http_latest
+            if payload is None:
+                continue
+            try:
+                self._send_motor_http(payload)
+            except Exception as e:
+                self.get_logger().warn(f"Envoi commande moteur HTTP: {type(e).__name__}: {e!r}")
 
     async def lidar_task(self):
         while rclpy.ok():
             try:
                 self.get_logger().info(f"Connexion WebSocket LiDAR à {LIDAR_WS_URL}")
-                async with websockets.connect(LIDAR_WS_URL, open_timeout=20) as ws:
+                async with websockets.connect(
+                    LIDAR_WS_URL,
+                    open_timeout=20,
+                    ping_interval=None,
+                    ping_timeout=None,
+                    close_timeout=1,
+                ) as ws:
                     self.get_logger().info("WebSocket LiDAR connecté")
-                    motor_tick = asyncio.create_task(self._motor_tick_loop(ws))
-                    try:
-                        async for msg in ws:
-                            await self._flush_motor_queue(ws)
-                            try:
-                                data = json.loads(msg)
-                            except Exception:
-                                continue
-                            raw = data.get("points", [])
-                            if raw:
-                                scan = self.build_laserscan(raw)
-                                self.lidar_pub.publish(scan)
-                            self.publish_imu_from_dict(data)
-                            # Sans yield, ce bloc CPU bloque la boucle asyncio : la tâche moteur
-                            # (_motor_tick_loop) ne s’exécute pas → saccades au pilotage.
-                            await asyncio.sleep(0)
-                    finally:
-                        motor_tick.cancel()
+                    async for msg in ws:
                         try:
-                            await motor_tick
-                        except asyncio.CancelledError:
-                            pass
+                            data = json.loads(msg)
+                        except Exception:
+                            continue
+                        raw = data.get("points", [])
+                        if raw:
+                            scan = self.build_laserscan(raw)
+                            self.lidar_pub.publish(scan)
+                        self.publish_imu_from_dict(data)
+                        await asyncio.sleep(0)
             except Exception as e:
                 self.get_logger().warn(f"Erreur WS LiDAR: {type(e).__name__}: {e!r}")
                 await asyncio.sleep(3.0)
@@ -250,7 +260,7 @@ class RoverBridge(Node):
             return
         now_ns = self.get_clock().now().nanoseconds
         if (now_ns - self._last_cmd_vel_time_ns) > self._cmd_vel_timeout_s * 1e9:
-            self._queue_motor_lr(0.0, 0.0)
+            self._queue_motor_lr(0.0, 0.0, force=True)
             self._cmd_vel_stopped_sent = True
 
 
@@ -258,7 +268,7 @@ async def spin_rclpy(node: RoverBridge):
     executor = SingleThreadedExecutor()
     executor.add_node(node)
     while rclpy.ok():
-        executor.spin_once(timeout_sec=0.1)
+        executor.spin_once(timeout_sec=0.02)
         await asyncio.sleep(0.001)
 
 

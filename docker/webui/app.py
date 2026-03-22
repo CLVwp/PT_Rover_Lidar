@@ -15,10 +15,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 
 from geometry_msgs.msg import Twist, Vector3Stamped
-from sensor_msgs.msg import LaserScan, Imu
+from sensor_msgs.msg import Imu
 from std_msgs.msg import String
-from nav_msgs.msg import OccupancyGrid
-from visualization_msgs.msg import MarkerArray
 
 
 class TelemetryBridge(Node):
@@ -29,21 +27,14 @@ class TelemetryBridge(Node):
             "rpy_deg": {"r": 0.0, "p": 0.0, "y": 0.0},
             "acc_ms2": {"x": 0.0, "y": 0.0, "z": 0.0},
             "gyro_dps": {"x": 0.0, "y": 0.0, "z": 0.0},
-            "scan": [],
             "nav_state": "",
-            "slam_map_points": [],
-            "slam_graph_points": [],
-            "slam_graph_edges": [],
         }
         self.cmd_pub = self.create_publisher(Twist, "/cmd_vel", 10)
         self.nav_pub = self.create_publisher(String, "/nav_control", 10)
 
         self.create_subscription(Vector3Stamped, "/imu/rpy_deg", self.on_rpy, 20)
         self.create_subscription(Imu, "/imu/data", self.on_imu, 20)
-        self.create_subscription(LaserScan, "/lidar_scan", self.on_scan, 5)
         self.create_subscription(String, "/nav_state", self.on_nav_state, 10)
-        self.create_subscription(OccupancyGrid, "/map", self.on_map, 5)
-        self.create_subscription(MarkerArray, "/slam_toolbox/graph_visualization", self.on_graph, 5)
 
     def on_rpy(self, msg: Vector3Stamped):
         with self._lock:
@@ -66,73 +57,9 @@ class TelemetryBridge(Node):
                 "z": float(msg.angular_velocity.z * 57.2957795),
             }
 
-    def on_scan(self, msg: LaserScan):
-        pts = []
-        for i, r in enumerate(msg.ranges):
-            if r > msg.range_min and r < msg.range_max:
-                ang_deg = int(i)
-                dist_mm = int(r * 1000.0)
-                pts.append([ang_deg, dist_mm])
-        with self._lock:
-            self.state["scan"] = pts[:1200]  # limite payload
-
     def on_nav_state(self, msg: String):
         with self._lock:
             self.state["nav_state"] = msg.data
-
-    def on_map(self, msg: OccupancyGrid):
-        # Convertit /map en nuage de points 2D monde (léger pour UI web).
-        w = int(msg.info.width)
-        h = int(msg.info.height)
-        res = float(msg.info.resolution)
-        ox = float(msg.info.origin.position.x)
-        oy = float(msg.info.origin.position.y)
-        data = msg.data
-        pts = []
-
-        # Décimation simple pour limiter la charge navigateur.
-        stride = 3 if (w * h) > 250000 else 2
-        for y in range(0, h, stride):
-            row = y * w
-            for x in range(0, w, stride):
-                v = data[row + x]
-                if v > 50:
-                    wx = ox + (x + 0.5) * res
-                    wy = oy + (y + 0.5) * res
-                    pts.append([wx, wy])
-                    if len(pts) >= 5000:
-                        break
-            if len(pts) >= 5000:
-                break
-
-        with self._lock:
-            self.state["slam_map_points"] = pts
-
-    def on_graph(self, msg: MarkerArray):
-        gpts = []
-        gedges = []
-        for marker in msg.markers:
-            # points de graphe
-            for p in marker.points:
-                gpts.append([float(p.x), float(p.y)])
-                if len(gpts) >= 2000:
-                    break
-            # edges si marker en LINE_LIST (pairs de points)
-            if marker.type == marker.LINE_LIST:
-                pts = marker.points
-                n = len(pts) - (len(pts) % 2)
-                for i in range(0, n, 2):
-                    p0 = pts[i]
-                    p1 = pts[i + 1]
-                    gedges.append([float(p0.x), float(p0.y), float(p1.x), float(p1.y)])
-                    if len(gedges) >= 2000:
-                        break
-            if len(gpts) >= 2000 and len(gedges) >= 2000:
-                break
-
-        with self._lock:
-            self.state["slam_graph_points"] = gpts
-            self.state["slam_graph_edges"] = gedges
 
     def snapshot(self):
         with self._lock:
@@ -187,7 +114,7 @@ async def ws_endpoint(ws: WebSocket):
     async def send_snapshots():
         while True:
             await ws.send_text(json.dumps(bridge.snapshot()))
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.05)
 
     async def recv_cmds():
         while True:

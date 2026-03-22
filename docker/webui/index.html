@@ -10,7 +10,6 @@
     .card { background:#111827; border:1px solid #374151; border-radius:8px; padding:12px; min-width:280px; }
     button { padding:8px 12px; margin:4px; border-radius:6px; border:0; background:#2563eb; color:white; cursor:pointer; touch-action:manipulation; user-select:none; }
     button.stop { background:#dc2626; }
-    canvas { background:#000; border-radius:8px; border:1px solid #374151; }
     .mono { font-family: Consolas, monospace; font-size:12px; color:#93c5fd; }
   </style>
 </head>
@@ -64,130 +63,21 @@
         <button onclick="nav('naive_off')">Naif OFF</button>
         <button onclick="nav('stop')">Nav STOP</button>
       </div>
+      <div class="mono" id="link_state">liaison=connexion...</div>
       <div class="mono" id="nav_state">nav_state=--</div>
     </div>
   </div>
 
-  <div class="card" style="margin-top:16px;">
-    <h3>Lidar (radar simple)</h3>
-    <canvas id="radar" width="500" height="500"></canvas>
-  </div>
-  <div class="card" style="margin-top:16px;">
-    <h3>SLAM Map + Graph</h3>
-    <canvas id="slam" width="900" height="600"></canvas>
-    <div class="mono">cyan: map occupied | rouge: graph nodes | bleu: graph edges</div>
-  </div>
-
   <script>
-    const st = { scan: [] };
-    let slamMapPts = [];
-    let slamGraphPts = [];
-    let slamGraphEdges = [];
-    const c = document.getElementById("radar");
-    const ctx = c.getContext("2d");
-    function drawRadar() {
-      const w = c.width, h = c.height, cx = w/2, cy = h/2;
-      ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
-      ctx.strokeStyle="#1f2937"; ctx.beginPath();
-      for (let r=50; r<=250; r+=50){ ctx.moveTo(cx+r,cy); ctx.arc(cx,cy,r,0,Math.PI*2); }
-      ctx.stroke();
-      const scale = 250/6000; // 6m max
-      ctx.fillStyle="#22d3ee";
-      for (const p of st.scan) {
-        const a = (p[0]-90) * Math.PI/180;
-        const d = p[1];
-        const x = cx + Math.cos(a) * d * scale;
-        const y = cy + Math.sin(a) * d * scale;
-        ctx.fillRect(x, y, 2, 2);
-      }
-      requestAnimationFrame(drawRadar);
-    }
-    drawRadar();
-
-    const sc = document.getElementById("slam");
-    const sctx = sc.getContext("2d");
-    function drawSlam() {
-      const w = sc.width, h = sc.height;
-      sctx.fillStyle = "#020617";
-      sctx.fillRect(0, 0, w, h);
-
-      const all = [];
-      for (const p of slamMapPts) all.push(p);
-      for (const p of slamGraphPts) all.push(p);
-      if (all.length === 0) {
-        requestAnimationFrame(drawSlam);
-        return;
-      }
-
-      let minX = all[0][0], maxX = all[0][0], minY = all[0][1], maxY = all[0][1];
-      for (const p of all) {
-        if (p[0] < minX) minX = p[0];
-        if (p[0] > maxX) maxX = p[0];
-        if (p[1] < minY) minY = p[1];
-        if (p[1] > maxY) maxY = p[1];
-      }
-      const dx = Math.max(0.1, maxX - minX);
-      const dy = Math.max(0.1, maxY - minY);
-      const margin = 20;
-      const sx = (w - 2 * margin) / dx;
-      const sy = (h - 2 * margin) / dy;
-      const k = Math.min(sx, sy);
-      const tx = margin - minX * k;
-      const ty = margin - minY * k;
-      const toPx = (x, y) => [tx + x * k, h - (ty + y * k)];
-
-      // map points
-      sctx.fillStyle = "rgba(34,211,238,0.45)";
-      for (const p of slamMapPts) {
-        const q = toPx(p[0], p[1]);
-        sctx.fillRect(q[0], q[1], 2, 2);
-      }
-
-      // graph edges
-      sctx.strokeStyle = "rgba(59,130,246,0.5)";
-      sctx.lineWidth = 1;
-      sctx.beginPath();
-      for (const e of slamGraphEdges) {
-        const a = toPx(e[0], e[1]);
-        const b = toPx(e[2], e[3]);
-        sctx.moveTo(a[0], a[1]);
-        sctx.lineTo(b[0], b[1]);
-      }
-      sctx.stroke();
-
-      // graph points
-      sctx.fillStyle = "rgba(239,68,68,0.9)";
-      for (const p of slamGraphPts) {
-        const q = toPx(p[0], p[1]);
-        sctx.fillRect(q[0] - 1, q[1] - 1, 3, 3);
-      }
-
-      requestAnimationFrame(drawSlam);
-    }
-    drawSlam();
-
-    /** Télémétrie (Lidar, IMU, SLAM…) via Docker. */
     let wsUi = null;
     let wsConnected = false;
-
-    const CMD_VEL_GAIN = 0.5;
-    /** Pivot pur : écart L/R plus fort. */
-    const ROTATION_DIFF_GAIN = 0.62;
-
-    /** Tant que tu gardes le bouton, v et w sont fixes → L et R identiques à chaque envoi : PWM stable (le MCU ne « multiplie » pas par la fréquence). */
-    function twistToLR(v, w) {
-      const vw = Math.abs(v) < 0.03 && Math.abs(w) > 0.02;
-      const g = vw ? ROTATION_DIFF_GAIN : CMD_VEL_GAIN;
-      const L = Math.max(-1, Math.min(1, v - g * w));
-      const R = Math.max(-1, Math.min(1, v + g * w));
-      return [L, R];
-    }
+    let wsReconnectTimer = null;
 
     /**
      * Maintien bouton : cadence de mise à jour de /cmd_vel.
      * Le bridge ROS lisse ensuite l'envoi moteur vers le rover.
      */
-    const CMD_HOLD_HZ = 20;
+    const CMD_HOLD_HZ = 30;
     let cmdHoldTimer = null;
     let cmdHoldLoop = null;
     let motorHoldActive = false;
@@ -238,6 +128,9 @@
       btn.addEventListener("pointerdown", (e) => {
         if (e.button !== 0 && e.button !== -1) return;
         e.preventDefault();
+        if (btn.setPointerCapture && e.pointerId != null) {
+          btn.setPointerCapture(e.pointerId);
+        }
         const l = parseFloat(btn.dataset.lin);
         const ang = parseFloat(btn.dataset.ang);
         cmdVelHoldStart(l, ang);
@@ -261,25 +154,57 @@
       cmdVelSend(0, 0);
     });
     async function nav(cmd){
+      if (wsUi && wsUi.readyState === WebSocket.OPEN) {
+        try {
+          wsUi.send(JSON.stringify({ type: "nav_control", cmd }));
+          return;
+        } catch (_) {}
+      }
       await fetch("/api/nav_control", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({cmd})});
     }
 
     function applyState(d) {
-      st.scan = d.scan || [];
       if (d.rpy_deg){ r.textContent=d.rpy_deg.r.toFixed(2); p.textContent=d.rpy_deg.p.toFixed(2); y.textContent=d.rpy_deg.y.toFixed(2); }
       if (d.acc_ms2){ ax.textContent=d.acc_ms2.x.toFixed(3); ay.textContent=d.acc_ms2.y.toFixed(3); az.textContent=d.acc_ms2.z.toFixed(3); }
       if (d.gyro_dps){ gx.textContent=d.gyro_dps.x.toFixed(2); gy.textContent=d.gyro_dps.y.toFixed(2); gz.textContent=d.gyro_dps.z.toFixed(2); }
       nav_state.textContent = d.nav_state || "nav_state=--";
-      slamMapPts = d.slam_map_points || [];
-      slamGraphPts = d.slam_graph_points || [];
-      slamGraphEdges = d.slam_graph_edges || [];
     }
 
-    wsUi = new WebSocket(`ws://${location.host}/ws`);
-    wsUi.onopen = () => { wsConnected = true; };
-    wsUi.onmessage = (ev) => applyState(JSON.parse(ev.data));
-    wsUi.onclose = () => { wsConnected = false; };
-    wsUi.onerror = () => { wsConnected = false; };
+    function setLinkState(text) {
+      document.getElementById("link_state").textContent = `liaison=${text}`;
+    }
+
+    function scheduleReconnect() {
+      if (wsReconnectTimer !== null) return;
+      wsReconnectTimer = setTimeout(() => {
+        wsReconnectTimer = null;
+        connectUiWs();
+      }, 1000);
+    }
+
+    function connectUiWs() {
+      if (wsUi && (wsUi.readyState === WebSocket.OPEN || wsUi.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+      setLinkState("connexion...");
+      wsUi = new WebSocket(`ws://${location.host}/ws`);
+      wsUi.onopen = () => {
+        wsConnected = true;
+        setLinkState("websocket");
+      };
+      wsUi.onmessage = (ev) => applyState(JSON.parse(ev.data));
+      wsUi.onclose = () => {
+        wsConnected = false;
+        setLinkState("reconnexion...");
+        scheduleReconnect();
+      };
+      wsUi.onerror = () => {
+        wsConnected = false;
+        setLinkState("fallback http");
+      };
+    }
+
+    connectUiWs();
 
     // Fallback si WS indisponible (ex: dépendance websocket manquante côté serveur)
     setInterval(async () => {
@@ -289,8 +214,10 @@
         if (!res.ok) return;
         const d = await res.json();
         applyState(d);
+        setLinkState("fallback http");
       } catch (_) {}
-    }, 250);
+      connectUiWs();
+    }, 1000);
   </script>
 </body>
 </html>

@@ -10,6 +10,7 @@ services:
     environment:
       # IP du rover (pour HTTP IMU + /js + commandes). A adapter selon ton réseau.
       - ROS_ROVER_IP=${ROS_ROVER_IP:-192.168.137.141}
+      - ROVER_HTTP_PORT=${ROVER_HTTP_PORT:-80}
       # Pour que Foxglove bridge et ROS utilisent le même domaine DDS.
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       # Mapping "naïf" = tu pilotes depuis Foxglove via /cmd_vel.
@@ -27,6 +28,7 @@ services:
       - START_IMU_MONITOR=${START_IMU_MONITOR:-1}
       # Arrêt moteurs si plus de /cmd_vel. Garde une marge modérée sans retarder le stop.
       - CMD_VEL_TIMEOUT_S=${CMD_VEL_TIMEOUT_S:-0.80}
+      - PYTHONDONTWRITEBYTECODE=1
       - TZ=UTC
     ports:
       # WebSocket Foxglove côté Windows (Chrome)
@@ -41,6 +43,7 @@ services:
       - .:/workspace
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - PYTHONDONTWRITEBYTECODE=1
       - TZ=UTC
       # Laisse quelques secondes à /lidar_scan + /odom/TF pour démarrer.
       - SLAM_START_DELAY_S=${SLAM_START_DELAY_S:-3}
