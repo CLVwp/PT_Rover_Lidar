@@ -10,6 +10,12 @@
     .card { background:#111827; border:1px solid #374151; border-radius:8px; padding:12px; min-width:280px; }
     button { padding:8px 12px; margin:4px; border-radius:6px; border:0; background:#2563eb; color:white; cursor:pointer; touch-action:manipulation; user-select:none; }
     button.stop { background:#dc2626; }
+    button.secondary { background:#334155; }
+    button.active { background:#0f766e; }
+    .button-row { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0; }
+    .button-row button { margin:0; }
+    .slider-wrap { margin:8px 0 4px 0; }
+    .slider-wrap input[type="range"] { width:100%; accent-color:#14b8a6; }
     .mono { font-family: Consolas, monospace; font-size:12px; color:#93c5fd; }
   </style>
 </head>
@@ -34,11 +40,21 @@
     <div class="card">
       <h3>Controle</h3>
       <p class="mono" style="margin:0 0 8px 0;font-size:11px;opacity:0.85;">Maintenir pour rouler. Moteurs : chemin unique via /cmd_vel vers le bridge ROS. Télémétrie : Docker.</p>
-      <div>
+      <div class="button-row">
+        <button type="button" class="speed-btn secondary" data-speed="0.3">Slow</button>
+        <button type="button" class="speed-btn active" data-speed="0.6">Middle</button>
+        <button type="button" class="speed-btn secondary" data-speed="1.0">Fast</button>
+      </div>
+      <div class="mono" id="speed_state">avance=middle (x0.60)</div>
+      <div class="slider-wrap">
+        <input type="range" id="turn_scale" min="0.3" max="1.8" step="0.05" value="1.00" />
+      </div>
+      <div class="mono" id="turn_state">rotation=x1.00</div>
+      <div class="button-row">
         <button type="button" class="hold-cmd" data-lin="0.35" data-ang="0">Avancer</button>
         <button type="button" class="hold-cmd" data-lin="-0.25" data-ang="0">Reculer</button>
       </div>
-      <div>
+      <div class="button-row">
         <button type="button" class="hold-cmd" data-lin="0" data-ang="2">Tourner G</button>
         <button type="button" class="hold-cmd" data-lin="0" data-ang="-2">Tourner D</button>
       </div>
@@ -81,18 +97,51 @@
     let cmdHoldTimer = null;
     let cmdHoldLoop = null;
     let motorHoldActive = false;
+    let speedScale = 0.6;
+    let speedLabel = "middle";
+    let turnScale = 1.0;
+
+    function updateSpeedButtons() {
+      document.querySelectorAll(".speed-btn").forEach((btn) => {
+        const value = parseFloat(btn.dataset.speed);
+        btn.classList.toggle("active", value === speedScale);
+        btn.classList.toggle("secondary", value !== speedScale);
+      });
+      document.getElementById("speed_state").textContent = `avance=${speedLabel} (x${speedScale.toFixed(2)})`;
+    }
+
+    function updateTurnScale() {
+      const slider = document.getElementById("turn_scale");
+      slider.value = turnScale.toFixed(2);
+      document.getElementById("turn_state").textContent = `rotation=x${turnScale.toFixed(2)}`;
+    }
+
+    function setSpeed(scale) {
+      speedScale = scale;
+      if (scale <= 0.31) speedLabel = "slow";
+      else if (scale >= 0.99) speedLabel = "fast";
+      else speedLabel = "middle";
+      updateSpeedButtons();
+    }
+
+    function setTurnScale(scale) {
+      turnScale = scale;
+      updateTurnScale();
+    }
 
     function cmdVelSend(l, a) {
+      const scaledLinear = l * speedScale;
+      const scaledAngular = a * turnScale;
       if (wsUi && wsUi.readyState === WebSocket.OPEN) {
         try {
-          wsUi.send(JSON.stringify({ type: "cmd_vel", linear_x: l, angular_z: a }));
+          wsUi.send(JSON.stringify({ type: "cmd_vel", linear_x: scaledLinear, angular_z: scaledAngular }));
           return;
         } catch (_) {}
       }
       fetch("/api/cmd_vel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ linear_x: l, angular_z: a }),
+        body: JSON.stringify({ linear_x: scaledLinear, angular_z: scaledAngular }),
       }).catch(() => {});
     }
 
@@ -124,25 +173,35 @@
       cmdHoldTimer = setTimeout(tick, periodMs);
     }
 
+    function startHoldFromButton(btn) {
+      const l = parseFloat(btn.dataset.lin);
+      const ang = parseFloat(btn.dataset.ang);
+      cmdVelHoldStart(l, ang);
+    }
+
     document.querySelectorAll(".hold-cmd").forEach((btn) => {
-      btn.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0 && e.button !== -1) return;
+      btn.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
         e.preventDefault();
-        if (btn.setPointerCapture && e.pointerId != null) {
-          btn.setPointerCapture(e.pointerId);
-        }
-        const l = parseFloat(btn.dataset.lin);
-        const ang = parseFloat(btn.dataset.ang);
-        cmdVelHoldStart(l, ang);
+        startHoldFromButton(btn);
+      });
+      btn.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        startHoldFromButton(btn);
+      }, { passive: false });
+      btn.addEventListener("contextmenu", (e) => e.preventDefault());
+      btn.addEventListener("dragstart", (e) => e.preventDefault());
+    });
+    document.querySelectorAll(".speed-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setSpeed(parseFloat(btn.dataset.speed));
       });
     });
-    ["pointerup", "pointercancel"].forEach((ev) => {
+    document.getElementById("turn_scale").addEventListener("input", (e) => {
+      setTurnScale(parseFloat(e.target.value));
+    });
+    ["mouseup", "touchend", "touchcancel"].forEach((ev) => {
       window.addEventListener(ev, () => cmdVelHoldStop());
-    });
-    ["blur", "visibilitychange"].forEach((ev) => {
-      window.addEventListener(ev, () => {
-        if (ev !== "visibilitychange" || document.hidden) cmdVelHoldStop();
-      });
     });
     document.getElementById("btn-stop").addEventListener("click", () => {
       motorHoldActive = false;
@@ -205,6 +264,8 @@
     }
 
     connectUiWs();
+    updateSpeedButtons();
+    updateTurnScale();
 
     // Fallback si WS indisponible (ex: dépendance websocket manquante côté serveur)
     setInterval(async () => {

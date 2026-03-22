@@ -19,7 +19,7 @@ services:
       # Estimateur de trajectoire pour alimenter TF + /odom:
       # - lidar = ICP 2D
       # - lio   = LiDAR + yaw IMU
-      - ESTIMATOR_MODE=${ESTIMATOR_MODE:-lio}
+      - ESTIMATOR_MODE=${ESTIMATOR_MODE:-lidar}
       # Pour enregistrer/rejouer un trajet sur la carte SLAM, viser "map" par défaut.
       - GOTO_TARGET_FRAME=${GOTO_TARGET_FRAME:-map}
       # Gestionnaire de navigation (waypoints, follow, patrol, naive) via /nav_control

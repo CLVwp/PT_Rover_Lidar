@@ -106,6 +106,9 @@ class RoverBridge(Node):
         self._cmd_vel_timer = self.create_timer(0.05, self._cmd_vel_timeout_cb)
         self._motor_http_lock = threading.Lock()
         self._motor_http_latest = None
+        self._motor_http_last_sent_payload = None
+        self._motor_http_last_sent_ns = 0
+        self._motor_http_refresh_s = 0.25
         self._motor_http_event = threading.Event()
         self._motor_http_thread = threading.Thread(target=self._motor_http_worker, daemon=True)
         self._motor_http_thread.start()
@@ -118,8 +121,11 @@ class RoverBridge(Node):
         L = max(-2.0, min(2.0, float(L)))
         R = max(-2.0, min(2.0, float(R)))
         payload = {"T": CMD_SPEED_T, "L": L, "R": R}
+        now_ns = self.get_clock().now().nanoseconds
         with self._motor_http_lock:
-            if (not force) and self._motor_http_latest == payload:
+            same_payload = self._motor_http_last_sent_payload == payload
+            refresh_due = (now_ns - self._motor_http_last_sent_ns) >= int(self._motor_http_refresh_s * 1e9)
+            if (not force) and same_payload and (not refresh_due):
                 return
             self._motor_http_latest = payload
         self._motor_http_event.set()
@@ -146,6 +152,9 @@ class RoverBridge(Node):
                 continue
             try:
                 self._send_motor_http(payload)
+                with self._motor_http_lock:
+                    self._motor_http_last_sent_payload = payload
+                    self._motor_http_last_sent_ns = self.get_clock().now().nanoseconds
             except Exception as e:
                 self.get_logger().warn(f"Envoi commande moteur HTTP: {type(e).__name__}: {e!r}")
 
