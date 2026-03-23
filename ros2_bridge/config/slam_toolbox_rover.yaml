@@ -30,7 +30,7 @@ slam_toolbox:
     # LiDAR (LD06) : portée 12 m, résolution 15 mm, 360° à 1°, 10 Hz scan / 4500 Hz mesures. Bridge peut limiter à 6 m (rover_bridge.py) ; ici 12 m pour utiliser toute la portée si le bridge envoie au-delà de 6 m
     min_laser_range: 0.02     # Portée min (m) ; sous ~5 cm peu fiable
     max_laser_range: 12.0      # Le bridge publie /lidar_scan avec range_max=6.0
-    minimum_time_interval: 0.05  # Integre plus souvent les scans valides
+    minimum_time_interval: 0.08  # Integre plus souvent les scans valides
     transform_timeout: 0.2    # Délai max (s) pour attendre une TF avant d’ignorer un scan
     tf_buffer_duration: 30.0  # Durée (s) du buffer TF
     stack_size_to_use: 40000000  # Taille pile (octets, ~40 Mo) pour le thread SLAM ; plus = évite stack overflow sur très grosses cartes, ne règle pas "queue is full"
@@ -39,14 +39,14 @@ slam_toolbox:
     # --- Quand intégrer un nouveau scan (anti-dérive) ---
     use_scan_matching: true
     use_scan_barycenter: true
-    minimum_travel_distance: 0.02   # Distance min (m) parcourue pour ajouter un scan ; 5 cm = fluide + filtre micro-mouvements
-    minimum_travel_heading: 0.05    # Rotation min (rad, ~7°) pour ajouter un scan
+    minimum_travel_distance: 0.03   # Distance min (m) parcourue pour ajouter un scan ; 5 cm = fluide + filtre micro-mouvements
+    minimum_travel_heading: 0.08    # Rotation min (rad, ~7°) pour ajouter un scan
     check_min_dist_and_heading_precisely: false  # true = vérification plus stricte (plus de CPU)
 
     # --- Scan matching (liens entre scans) ---
     scan_buffer_size: 15                    # Nombre de scans gardés en buffer
     scan_buffer_maximum_scan_distance: 10.0 # Distance max (m) robot–scan pour garder en buffer
-    link_match_minimum_response_fine: 0.1  # Seuil qualité matching fin entre scans
+    link_match_minimum_response_fine: 0.15  # Seuil qualité matching fin entre scans
     link_scan_maximum_distance: 1.5         # Distance max (m) entre deux scans pour créer un lien
 
     # --- Loop closure (fermeture de boucle quand tu reviens au même endroit) ---

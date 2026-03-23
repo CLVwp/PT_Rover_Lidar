@@ -28,9 +28,10 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from rclpy.duration import Duration
 
-from geometry_msgs.msg import PointStamped, PoseStamped, Twist
+from geometry_msgs.msg import Point, PointStamped, PoseStamped, Twist
+from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
-from visualization_msgs.msg import MarkerArray
+from visualization_msgs.msg import Marker, MarkerArray
 from tf2_ros import Buffer, TransformListener
 from slam_toolbox.srv import Clear, Reset
 
@@ -82,6 +83,12 @@ class NavManager(Node):
         self.declare_parameter("naive_angular", 0.35)
         self.declare_parameter("slam_point_min_spacing_m", 0.35)
         self.declare_parameter("record_spacing_m", 0.20)
+        self.declare_parameter("contact_front_warn_m", 0.28)
+        self.declare_parameter("contact_front_danger_m", 0.16)
+        self.declare_parameter("contact_side_warn_m", 0.22)
+        self.declare_parameter("contact_side_danger_m", 0.12)
+        self.declare_parameter("contact_front_angle_deg", 70.0)
+        self.declare_parameter("contact_side_angle_deg", 90.0)
 
         self.target_frame = self.get_parameter("target_frame").value
         self.base_frame = self.get_parameter("base_frame").value
@@ -94,12 +101,15 @@ class NavManager(Node):
         self.sub_click = self.create_subscription(PointStamped, "/clicked_point", self.on_clicked, qos)
         self.sub_goal = self.create_subscription(PoseStamped, "/move_base_simple/goal", self.on_goal, qos)
         self.sub_ctrl = self.create_subscription(String, "/nav_control", self.on_control, 10)
+        self.sub_scan = self.create_subscription(LaserScan, "/lidar_scan", self.on_scan, 10)
         self.sub_slam_graph = self.create_subscription(
             MarkerArray, "/slam_toolbox/graph_visualization", self.on_slam_graph, 10
         )
 
         self.pub_cmd = self.create_publisher(Twist, "/cmd_vel", 10)
         self.pub_state = self.create_publisher(String, "/nav_state", 10)
+        self.pub_contact_markers = self.create_publisher(MarkerArray, "/nav/contact_zones", 10)
+        self.pub_contact_state = self.create_publisher(String, "/nav/contact_state", 10)
         self.cli_slam_clear = self.create_client(Clear, "/slam_toolbox/clear_changes")
         self.cli_slam_reset = self.create_client(Reset, "/slam_toolbox/reset")
 
@@ -116,6 +126,12 @@ class NavManager(Node):
         self.active_list = "manual"  # manual|slam
         self.goal = None  # Waypoint in target frame
         self.in_tol_count = 0
+        self._scan_frame = "lidar"
+        self._contact_summary = {
+            "front": float("inf"),
+            "left": float("inf"),
+            "right": float("inf"),
+        }
 
         self.timer = self.create_timer(float(self.get_parameter("cmd_period_s").value), self.on_timer)
         self.state_timer = self.create_timer(0.5, self.publish_state)
@@ -150,11 +166,199 @@ class NavManager(Node):
         with self._lock:
             txt = (
                 f"mode={self.mode} record_on={str(self.record_on).lower()} "
-                f"wp_count={len(self.waypoints)} slam_wp_count={len(self.slam_waypoints)} wp_idx={self.wp_idx}"
+                f"wp_count={len(self.waypoints)} slam_wp_count={len(self.slam_waypoints)} wp_idx={self.wp_idx} "
+                f"front_min={self._contact_summary['front']:.2f} "
+                f"left_min={self._contact_summary['left']:.2f} "
+                f"right_min={self._contact_summary['right']:.2f}"
             )
         m = String()
         m.data = txt
         self.pub_state.publish(m)
+
+    @staticmethod
+    def _angle_diff(a: float, b: float) -> float:
+        return wrap_pi(a - b)
+
+    def _sector_min(self, scan: LaserScan, center_rad: float, width_rad: float) -> float:
+        best = float("inf")
+        angle = float(scan.angle_min)
+        for r in scan.ranges:
+            if math.isfinite(r) and scan.range_min <= r <= scan.range_max:
+                if abs(self._angle_diff(angle, center_rad)) <= width_rad * 0.5:
+                    best = min(best, float(r))
+            angle += float(scan.angle_increment)
+        return best
+
+    @staticmethod
+    def _contact_level(distance: float, warn_m: float, danger_m: float) -> str:
+        if not math.isfinite(distance):
+            return "none"
+        if distance <= danger_m:
+            return "danger"
+        if distance <= warn_m:
+            return "warn"
+        return "safe"
+
+    @staticmethod
+    def _contact_color(level: str):
+        if level == "danger":
+            return (0.95, 0.15, 0.15, 0.90)
+        if level == "warn":
+            return (0.98, 0.62, 0.10, 0.88)
+        if level == "safe":
+            return (0.15, 0.85, 0.25, 0.72)
+        return (0.60, 0.60, 0.60, 0.45)
+
+    @staticmethod
+    def _format_contact_distance(distance: float) -> str:
+        if not math.isfinite(distance):
+            return "--"
+        return f"{distance:.2f}m"
+
+    def _dominant_contact(self, front_min: float, left_min: float, right_min: float):
+        front_warn = float(self.get_parameter("contact_front_warn_m").value)
+        front_danger = float(self.get_parameter("contact_front_danger_m").value)
+        side_warn = float(self.get_parameter("contact_side_warn_m").value)
+        side_danger = float(self.get_parameter("contact_side_danger_m").value)
+        candidates = [
+            ("front", front_min, self._contact_level(front_min, front_warn, front_danger)),
+            ("left", left_min, self._contact_level(left_min, side_warn, side_danger)),
+            ("right", right_min, self._contact_level(right_min, side_warn, side_danger)),
+        ]
+        priority = {"danger": 3, "warn": 2, "safe": 1, "none": 0}
+        candidates.sort(key=lambda item: (-priority[item[2]], item[1]))
+        best_side, best_distance, best_level = candidates[0]
+        if best_level in ("safe", "none"):
+            return "none", "safe", best_distance
+        return best_side, best_level, best_distance
+
+    def _make_sector_marker(self, marker_id: int, center_rad: float, width_rad: float, radius: float, color, scale_x: float = 0.025):
+        marker = Marker()
+        marker.header.frame_id = self._scan_frame
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "nav_contact_zone"
+        marker.id = marker_id
+        marker.type = Marker.LINE_STRIP
+        marker.action = Marker.ADD
+        marker.scale.x = scale_x
+        marker.color.r = color[0]
+        marker.color.g = color[1]
+        marker.color.b = color[2]
+        marker.color.a = color[3]
+        marker.pose.orientation.w = 1.0
+        start = center_rad - width_rad * 0.5
+        end = center_rad + width_rad * 0.5
+        pts = [Point(x=0.0, y=0.0, z=0.0)]
+        steps = 12
+        for i in range(steps + 1):
+            a = start + (end - start) * (i / steps)
+            pts.append(Point(x=radius * math.cos(a), y=radius * math.sin(a), z=0.0))
+        pts.append(Point(x=0.0, y=0.0, z=0.0))
+        marker.points = pts
+        return marker
+
+    def _make_text_marker(self, marker_id: int, x: float, y: float, text: str, color):
+        marker = Marker()
+        marker.header.frame_id = self._scan_frame
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "nav_contact_text"
+        marker.id = marker_id
+        marker.type = Marker.TEXT_VIEW_FACING
+        marker.action = Marker.ADD
+        marker.pose.position.x = x
+        marker.pose.position.y = y
+        marker.pose.position.z = 0.05
+        marker.pose.orientation.w = 1.0
+        marker.scale.z = 0.08
+        marker.color.r = color[0]
+        marker.color.g = color[1]
+        marker.color.b = color[2]
+        marker.color.a = color[3]
+        marker.text = text
+        return marker
+
+    def _publish_contact_markers(self):
+        front_warn = float(self.get_parameter("contact_front_warn_m").value)
+        front_danger = float(self.get_parameter("contact_front_danger_m").value)
+        side_warn = float(self.get_parameter("contact_side_warn_m").value)
+        side_danger = float(self.get_parameter("contact_side_danger_m").value)
+        front_width = math.radians(float(self.get_parameter("contact_front_angle_deg").value))
+        side_width = math.radians(float(self.get_parameter("contact_side_angle_deg").value))
+        with self._lock:
+            front_min = self._contact_summary["front"]
+            left_min = self._contact_summary["left"]
+            right_min = self._contact_summary["right"]
+        front_level = self._contact_level(front_min, front_warn, front_danger)
+        left_level = self._contact_level(left_min, side_warn, side_danger)
+        right_level = self._contact_level(right_min, side_warn, side_danger)
+        dominant_side, dominant_level, dominant_distance = self._dominant_contact(front_min, left_min, right_min)
+        front_color = self._contact_color(front_level)
+        left_color = self._contact_color(left_level)
+        right_color = self._contact_color(right_level)
+        danger_outline = (0.95, 0.15, 0.15, 0.30)
+        markers = MarkerArray()
+        markers.markers.append(self._make_sector_marker(0, 0.0, front_width, front_warn, front_color, 0.03))
+        markers.markers.append(self._make_sector_marker(1, math.pi * 0.5, side_width, side_warn, left_color, 0.03))
+        markers.markers.append(self._make_sector_marker(2, -math.pi * 0.5, side_width, side_warn, right_color, 0.03))
+        markers.markers.append(self._make_sector_marker(3, 0.0, front_width, front_danger, danger_outline, 0.018))
+        markers.markers.append(self._make_sector_marker(4, math.pi * 0.5, side_width, side_danger, danger_outline, 0.018))
+        markers.markers.append(self._make_sector_marker(5, -math.pi * 0.5, side_width, side_danger, danger_outline, 0.018))
+        markers.markers.append(
+            self._make_text_marker(
+                10,
+                front_warn + 0.07,
+                0.0,
+                f"front {front_level} {self._format_contact_distance(front_min)}",
+                front_color,
+            )
+        )
+        markers.markers.append(
+            self._make_text_marker(
+                11,
+                0.0,
+                side_warn + 0.10,
+                f"left {left_level} {self._format_contact_distance(left_min)}",
+                left_color,
+            )
+        )
+        markers.markers.append(
+            self._make_text_marker(
+                12,
+                0.0,
+                -(side_warn + 0.10),
+                f"right {right_level} {self._format_contact_distance(right_min)}",
+                right_color,
+            )
+        )
+        dominant_color = self._contact_color(dominant_level)
+        dominant_label = (
+            f"active {dominant_side} {dominant_level} {self._format_contact_distance(dominant_distance)}"
+            if dominant_side != "none"
+            else "active none"
+        )
+        markers.markers.append(self._make_text_marker(20, 0.0, 0.0, dominant_label, dominant_color))
+        self.pub_contact_markers.publish(markers)
+        state_msg = String()
+        state_msg.data = (
+            f"active={dominant_side} level={dominant_level} "
+            f"front={self._format_contact_distance(front_min)} "
+            f"left={self._format_contact_distance(left_min)} "
+            f"right={self._format_contact_distance(right_min)}"
+        )
+        self.pub_contact_state.publish(state_msg)
+
+    def on_scan(self, msg: LaserScan):
+        front_width = math.radians(float(self.get_parameter("contact_front_angle_deg").value))
+        side_width = math.radians(float(self.get_parameter("contact_side_angle_deg").value))
+        front_min = self._sector_min(msg, 0.0, front_width)
+        left_min = self._sector_min(msg, math.pi * 0.5, side_width)
+        right_min = self._sector_min(msg, -math.pi * 0.5, side_width)
+        with self._lock:
+            self._scan_frame = msg.header.frame_id or "lidar"
+            self._contact_summary["front"] = front_min
+            self._contact_summary["left"] = left_min
+            self._contact_summary["right"] = right_min
+        self._publish_contact_markers()
 
     def _record_waypoint_locked(self, x: float, y: float, force: bool = False):
         spacing = float(self.get_parameter("record_spacing_m").value)

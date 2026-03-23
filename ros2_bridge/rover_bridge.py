@@ -68,6 +68,9 @@ def rpy_deg_to_quaternion(roll_deg: float, pitch_deg: float, yaw_deg: float):
 class RoverBridge(Node):
     def __init__(self):
         super().__init__("rover_bridge")
+        self.declare_parameter("lidar_offset_x_m", -0.02)
+        self.declare_parameter("lidar_offset_y_m", 0.0)
+        self.declare_parameter("lidar_offset_z_m", 0.0)
 
         qos_lidar = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -84,9 +87,9 @@ class RoverBridge(Node):
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "base_link"
         t.child_frame_id = "lidar"
-        t.transform.translation.x = 0.0
-        t.transform.translation.y = 0.0
-        t.transform.translation.z = 0.0
+        t.transform.translation.x = float(self.get_parameter("lidar_offset_x_m").value)
+        t.transform.translation.y = float(self.get_parameter("lidar_offset_y_m").value)
+        t.transform.translation.z = float(self.get_parameter("lidar_offset_z_m").value)
         t.transform.rotation.x = 0.0
         t.transform.rotation.y = 0.0
         t.transform.rotation.z = 0.0
