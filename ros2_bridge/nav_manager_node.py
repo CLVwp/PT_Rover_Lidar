@@ -19,6 +19,7 @@ Quand record_on est actif, le node enregistre aussi la pose reelle du rover
 pendant le pilotage manuel afin de pouvoir rejouer un tour "naif".
 """
 
+import heapq
 import math
 import threading
 from dataclasses import dataclass
@@ -29,6 +30,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from rclpy.duration import Duration
 
 from geometry_msgs.msg import Point, PointStamped, PoseStamped, Twist
+from nav_msgs.msg import OccupancyGrid, Path
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
 from visualization_msgs.msg import Marker, MarkerArray
@@ -84,10 +86,14 @@ class NavManager(Node):
         self.declare_parameter("robot_length_m", 0.20)
         self.declare_parameter("robot_width_m", 0.18)
         self.declare_parameter("robot_height_m", 0.08)
-        self.declare_parameter("robot_safety_margin_m", 0.03)
+        self.declare_parameter("robot_safety_margin_m", 0.001)
         self.declare_parameter("lidar_visual_offset_x_m", -0.02)
         self.declare_parameter("lidar_visual_offset_y_m", 0.0)
         self.declare_parameter("lidar_visual_offset_z_m", 0.05)
+        self.declare_parameter("map_occupied_threshold", 100)
+        self.declare_parameter("map_unknown_is_blocked", False)
+        self.declare_parameter("planned_path_spacing_m", 0.10)
+        self.declare_parameter("path_lookahead_m", 0.28)
         self.declare_parameter("slam_point_min_spacing_m", 0.35)
         self.declare_parameter("record_spacing_m", 0.20)
         self.declare_parameter("contact_front_warn_m", 0.28)
@@ -108,6 +114,7 @@ class NavManager(Node):
         self.sub_click = self.create_subscription(PointStamped, "/clicked_point", self.on_clicked, qos)
         self.sub_goal = self.create_subscription(PoseStamped, "/move_base_simple/goal", self.on_goal, qos)
         self.sub_ctrl = self.create_subscription(String, "/nav_control", self.on_control, 10)
+        self.sub_map = self.create_subscription(OccupancyGrid, "/map", self.on_map, 10)
         self.sub_scan = self.create_subscription(LaserScan, "/lidar_scan", self.on_scan, 10)
         self.sub_slam_graph = self.create_subscription(
             MarkerArray, "/slam_toolbox/graph_visualization", self.on_slam_graph, 10
@@ -118,6 +125,8 @@ class NavManager(Node):
         self.pub_contact_markers = self.create_publisher(MarkerArray, "/nav/contact_zones", 10)
         self.pub_contact_state = self.create_publisher(String, "/nav/contact_state", 10)
         self.pub_robot_markers = self.create_publisher(MarkerArray, "/nav/robot_markers", 10)
+        self.pub_planned_path = self.create_publisher(Path, "/nav/planned_path", 10)
+        self.pub_inflated_map = self.create_publisher(OccupancyGrid, "/nav/inflated_map", 10)
         self.cli_slam_clear = self.create_client(Clear, "/slam_toolbox/clear_changes")
         self.cli_slam_reset = self.create_client(Reset, "/slam_toolbox/reset")
 
@@ -130,8 +139,9 @@ class NavManager(Node):
         self.mode = "idle"  # idle|goto|follow|patrol|naive
         self.waypoints = []
         self.slam_waypoints = []
+        self.planned_waypoints = []
         self.wp_idx = 0
-        self.active_list = "manual"  # manual|slam
+        self.active_list = "manual"  # manual|slam|planned
         self.goal = None  # Waypoint in target frame
         self.in_tol_count = 0
         self._scan_frame = "lidar"
@@ -140,6 +150,14 @@ class NavManager(Node):
             "left": float("inf"),
             "right": float("inf"),
         }
+        self._map_msg = None
+        self._grid_width = 0
+        self._grid_height = 0
+        self._grid_resolution = 0.0
+        self._grid_origin_x = 0.0
+        self._grid_origin_y = 0.0
+        self._occupancy_grid = []
+        self._inflated_grid = []
 
         self.timer = self.create_timer(float(self.get_parameter("cmd_period_s").value), self.on_timer)
         self.state_timer = self.create_timer(0.5, self.publish_state)
@@ -174,7 +192,9 @@ class NavManager(Node):
         with self._lock:
             txt = (
                 f"mode={self.mode} record_on={str(self.record_on).lower()} "
+                f"active_list={self.active_list} "
                 f"wp_count={len(self.waypoints)} slam_wp_count={len(self.slam_waypoints)} wp_idx={self.wp_idx} "
+                f"planned_wp_count={len(self.planned_waypoints)} "
                 f"front_min={self._contact_summary['front']:.2f} "
                 f"left_min={self._contact_summary['left']:.2f} "
                 f"right_min={self._contact_summary['right']:.2f}"
@@ -182,6 +202,265 @@ class NavManager(Node):
         m = String()
         m.data = txt
         self.pub_state.publish(m)
+
+    def _robot_planner_radius_m(self) -> float:
+        half_length = 0.5 * float(self.get_parameter("robot_length_m").value)
+        half_width = 0.5 * float(self.get_parameter("robot_width_m").value)
+        safety_margin = float(self.get_parameter("robot_safety_margin_m").value)
+        return math.hypot(half_length + safety_margin, half_width + safety_margin)
+
+    def _planner_spacing_m(self) -> float:
+        return float(self.get_parameter("planned_path_spacing_m").value)
+
+    def _path_lookahead_m(self) -> float:
+        return float(self.get_parameter("path_lookahead_m").value)
+
+    def _map_index(self, gx: int, gy: int) -> int:
+        return gy * self._grid_width + gx
+
+    def _world_to_grid(self, x: float, y: float):
+        if self._grid_resolution <= 0.0:
+            return None
+        gx = int(math.floor((x - self._grid_origin_x) / self._grid_resolution))
+        gy = int(math.floor((y - self._grid_origin_y) / self._grid_resolution))
+        if gx < 0 or gy < 0 or gx >= self._grid_width or gy >= self._grid_height:
+            return None
+        return gx, gy
+
+    def _grid_to_world(self, gx: int, gy: int):
+        x = self._grid_origin_x + (gx + 0.5) * self._grid_resolution
+        y = self._grid_origin_y + (gy + 0.5) * self._grid_resolution
+        return x, y
+
+    def _downsample_waypoints(self, points):
+        if not points:
+            return []
+        spacing = max(0.01, self._planner_spacing_m())
+        out = [points[0]]
+        last = points[0]
+        for pt in points[1:-1]:
+            if math.hypot(pt.x - last.x, pt.y - last.y) >= spacing:
+                out.append(pt)
+                last = pt
+        if len(points) > 1:
+            out.append(points[-1])
+        dedup = []
+        for pt in out:
+            if not dedup or math.hypot(pt.x - dedup[-1].x, pt.y - dedup[-1].y) > 1e-6:
+                dedup.append(pt)
+        return dedup
+
+    def _publish_planned_path_msg(self, points):
+        msg = Path()
+        msg.header.frame_id = self.target_frame
+        msg.header.stamp = self.get_clock().now().to_msg()
+        poses = []
+        for i, pt in enumerate(points):
+            pose = PoseStamped()
+            pose.header = msg.header
+            pose.pose.position.x = pt.x
+            pose.pose.position.y = pt.y
+            pose.pose.position.z = 0.0
+            if i + 1 < len(points):
+                nx, ny = points[i + 1].x, points[i + 1].y
+                yaw = math.atan2(ny - pt.y, nx - pt.x)
+                pose.pose.orientation.z = math.sin(yaw * 0.5)
+                pose.pose.orientation.w = math.cos(yaw * 0.5)
+            else:
+                pose.pose.orientation.w = 1.0
+            poses.append(pose)
+        msg.poses = poses
+        self.pub_planned_path.publish(msg)
+
+    def _publish_inflated_map_msg(self):
+        if self._map_msg is None or not self._inflated_grid:
+            return
+        msg = OccupancyGrid()
+        msg.header = self._map_msg.header
+        msg.info = self._map_msg.info
+        unknown_blocked = bool(self.get_parameter("map_unknown_is_blocked").value)
+        data = []
+        for idx, blocked in enumerate(self._inflated_grid):
+            if blocked:
+                data.append(100)
+            elif unknown_blocked and self._occupancy_grid and self._occupancy_grid[idx] < 0:
+                data.append(-1)
+            else:
+                data.append(0)
+        msg.data = data
+        self.pub_inflated_map.publish(msg)
+
+    def _inflate_occupancy_grid(self):
+        if not self._occupancy_grid or self._grid_width <= 0 or self._grid_height <= 0:
+            self._inflated_grid = []
+            return
+        radius_cells = max(1, int(math.ceil(self._robot_planner_radius_m() / self._grid_resolution)))
+        occupied_threshold = int(self.get_parameter("map_occupied_threshold").value)
+        unknown_blocked = bool(self.get_parameter("map_unknown_is_blocked").value)
+        inflated = [False] * len(self._occupancy_grid)
+        occupied_cells = []
+        for gy in range(self._grid_height):
+            row_base = gy * self._grid_width
+            for gx in range(self._grid_width):
+                val = self._occupancy_grid[row_base + gx]
+                if val >= occupied_threshold or (unknown_blocked and val < 0):
+                    occupied_cells.append((gx, gy))
+        for ox, oy in occupied_cells:
+            for dy in range(-radius_cells, radius_cells + 1):
+                ny = oy + dy
+                if ny < 0 or ny >= self._grid_height:
+                    continue
+                for dx in range(-radius_cells, radius_cells + 1):
+                    nx = ox + dx
+                    if nx < 0 or nx >= self._grid_width:
+                        continue
+                    if dx * dx + dy * dy <= radius_cells * radius_cells:
+                        inflated[self._map_index(nx, ny)] = True
+        self._inflated_grid = inflated
+
+    def on_map(self, msg: OccupancyGrid):
+        self._map_msg = msg
+        self._grid_width = int(msg.info.width)
+        self._grid_height = int(msg.info.height)
+        self._grid_resolution = float(msg.info.resolution)
+        self._grid_origin_x = float(msg.info.origin.position.x)
+        self._grid_origin_y = float(msg.info.origin.position.y)
+        self._occupancy_grid = list(msg.data)
+        self._inflate_occupancy_grid()
+        self._publish_inflated_map_msg()
+
+    def _is_grid_blocked(self, gx: int, gy: int) -> bool:
+        if gx < 0 or gy < 0 or gx >= self._grid_width or gy >= self._grid_height:
+            return True
+        if not self._inflated_grid:
+            return True
+        return self._inflated_grid[self._map_index(gx, gy)]
+
+    def _nearest_free_cell(self, start_cell):
+        if start_cell is None:
+            return None
+        sx, sy = start_cell
+        if not self._is_grid_blocked(sx, sy):
+            return start_cell
+        max_radius = max(self._grid_width, self._grid_height)
+        for radius in range(1, max_radius):
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    if abs(dx) != radius and abs(dy) != radius:
+                        continue
+                    gx = sx + dx
+                    gy = sy + dy
+                    if gx < 0 or gy < 0 or gx >= self._grid_width or gy >= self._grid_height:
+                        continue
+                    if not self._is_grid_blocked(gx, gy):
+                        return gx, gy
+        return None
+
+    def _reconstruct_path_cells(self, came_from, current):
+        out = [current]
+        while current in came_from:
+            current = came_from[current]
+            out.append(current)
+        out.reverse()
+        return out
+
+    def _plan_grid_path(self, start_xy, goal_xy):
+        if not self._inflated_grid:
+            return []
+        start_cell = self._nearest_free_cell(self._world_to_grid(start_xy[0], start_xy[1]))
+        goal_cell = self._nearest_free_cell(self._world_to_grid(goal_xy[0], goal_xy[1]))
+        if start_cell is None or goal_cell is None:
+            return []
+        open_heap = []
+        heapq.heappush(open_heap, (0.0, start_cell))
+        came_from = {}
+        g_score = {start_cell: 0.0}
+        neighbors = [
+            (-1, 0, 1.0),
+            (1, 0, 1.0),
+            (0, -1, 1.0),
+            (0, 1, 1.0),
+            (-1, -1, math.sqrt(2.0)),
+            (-1, 1, math.sqrt(2.0)),
+            (1, -1, math.sqrt(2.0)),
+            (1, 1, math.sqrt(2.0)),
+        ]
+
+        def heuristic(a, b):
+            return math.hypot(a[0] - b[0], a[1] - b[1])
+
+        closed = set()
+        while open_heap:
+            _, current = heapq.heappop(open_heap)
+            if current in closed:
+                continue
+            if current == goal_cell:
+                return self._reconstruct_path_cells(came_from, current)
+            closed.add(current)
+            for dx, dy, cost in neighbors:
+                nx = current[0] + dx
+                ny = current[1] + dy
+                nxt = (nx, ny)
+                if self._is_grid_blocked(nx, ny):
+                    continue
+                new_cost = g_score[current] + cost
+                if new_cost < g_score.get(nxt, float("inf")):
+                    came_from[nxt] = current
+                    g_score[nxt] = new_cost
+                    heapq.heappush(open_heap, (new_cost + heuristic(nxt, goal_cell), nxt))
+        return []
+
+    def _plan_waypoints(self, start_xy, goal_xy):
+        cells = self._plan_grid_path(start_xy, goal_xy)
+        if not cells:
+            return []
+        pts = [Waypoint(*self._grid_to_world(gx, gy)) for gx, gy in cells]
+        return self._downsample_waypoints(pts)
+
+    def _current_waypoint_list_locked(self):
+        if self.active_list == "slam":
+            return self.slam_waypoints
+        if self.active_list == "planned":
+            return self.planned_waypoints
+        return self.waypoints
+
+    def _contact_levels_locked(self):
+        front = self._contact_summary["front"]
+        left = self._contact_summary["left"]
+        right = self._contact_summary["right"]
+        front_warn = float(self.get_parameter("contact_front_warn_m").value)
+        front_danger = float(self.get_parameter("contact_front_danger_m").value)
+        side_warn = float(self.get_parameter("contact_side_warn_m").value)
+        side_danger = float(self.get_parameter("contact_side_danger_m").value)
+        return (
+            self._contact_level(front, front_warn, front_danger),
+            self._contact_level(left, side_warn, side_danger),
+            self._contact_level(right, side_warn, side_danger),
+        )
+
+    def _planned_lookahead_goal_locked(self, rx: float, ry: float):
+        if not self.planned_waypoints:
+            return None, None
+        start_idx = max(0, min(self.wp_idx, len(self.planned_waypoints) - 1))
+        search_start = max(0, start_idx - 2)
+        best_idx = start_idx
+        best_dist = float("inf")
+        for idx in range(search_start, len(self.planned_waypoints)):
+            pt = self.planned_waypoints[idx]
+            d = math.hypot(pt.x - rx, pt.y - ry)
+            if d < best_dist:
+                best_dist = d
+                best_idx = idx
+        self.wp_idx = best_idx
+        lookahead_m = max(self._path_lookahead_m(), self._planner_spacing_m())
+        target_idx = best_idx
+        for idx in range(best_idx, len(self.planned_waypoints)):
+            pt = self.planned_waypoints[idx]
+            if math.hypot(pt.x - rx, pt.y - ry) >= lookahead_m:
+                target_idx = idx
+                break
+            target_idx = idx
+        return self.planned_waypoints[target_idx], self.planned_waypoints[-1]
 
     @staticmethod
     def _angle_diff(a: float, b: float) -> float:
@@ -692,13 +971,34 @@ class NavManager(Node):
             self.get_logger().warn("Goal ignore: TF indisponible")
             return
         gx, gy, _ = pt
+        pose = self.get_robot_pose()
+        planned = []
+        if pose is not None and self._inflated_grid:
+            planned = self._plan_waypoints((pose[0], pose[1]), (gx, gy))
         with self._lock:
             if self.record_on:
                 self.waypoints.append(Waypoint(gx, gy))
-            self.goal = Waypoint(gx, gy)
-            self.mode = "goto"
+            if planned:
+                self.planned_waypoints = planned
+                self.active_list = "planned"
+                self.wp_idx = 1 if len(planned) > 1 else 0
+                self.goal = planned[self.wp_idx]
+                self.mode = "follow"
+            else:
+                self.planned_waypoints = []
+                self.active_list = "manual"
+                self.wp_idx = 0
+                self.goal = Waypoint(gx, gy)
+                self.mode = "goto"
             self.in_tol_count = 0
-        self.get_logger().info(f"Goal fige en {self.target_frame}: x={gx:.2f} y={gy:.2f}")
+        if planned:
+            self._publish_planned_path_msg(planned)
+            self.get_logger().info(
+                f"Chemin planifie vers {self.target_frame}: x={gx:.2f} y={gy:.2f}, {len(planned)} points"
+            )
+        else:
+            self._publish_planned_path_msg([])
+            self.get_logger().info(f"Goal fige en {self.target_frame}: x={gx:.2f} y={gy:.2f}")
 
     def on_clicked(self, msg: PointStamped):
         self._set_goal_from_point(msg.point.x, msg.point.y, msg.point.z, msg.header.frame_id)
@@ -716,6 +1016,7 @@ class NavManager(Node):
                 self.record_on = False
             elif cmd == "clear":
                 self.waypoints.clear()
+                self.planned_waypoints.clear()
                 self.wp_idx = 0
                 self.active_list = "manual"
                 self.goal = None
@@ -774,6 +1075,8 @@ class NavManager(Node):
             else:
                 self.get_logger().warn(f"Commande inconnue: {cmd}")
         self.get_logger().info(f"/nav_control => {cmd}")
+        if cmd == "clear":
+            self._publish_planned_path_msg([])
 
     def _publish_stop(self):
         t = Twist()
@@ -809,6 +1112,15 @@ class NavManager(Node):
             self.pub_cmd.publish(t)
             return
 
+        final_goal = goal
+        with self._lock:
+            if mode == "follow" and self.active_list == "planned":
+                planned_goal, final_planned_goal = self._planned_lookahead_goal_locked(rx, ry)
+                if planned_goal is not None:
+                    self.goal = planned_goal
+                    goal = planned_goal
+                    final_goal = final_planned_goal
+
         if goal is None:
             return
 
@@ -816,9 +1128,11 @@ class NavManager(Node):
         dy = goal.y - ry
         dist = math.hypot(dx, dy)
         ang = wrap_pi(math.atan2(dy, dx) - yaw)
+        final_dist = math.hypot(final_goal.x - rx, final_goal.y - ry) if final_goal is not None else dist
 
         tol = float(self.get_parameter("distance_tolerance_m").value)
-        if dist <= tol:
+        reached_dist = final_dist if (mode == "follow" and self.active_list == "planned") else dist
+        if reached_dist <= tol:
             self.in_tol_count += 1
         else:
             self.in_tol_count = 0
@@ -832,15 +1146,23 @@ class NavManager(Node):
                     self.mode = "idle"
                     self.goal = None
                 elif self.mode == "follow":
-                    self.wp_idx += 1
-                    cur = self.waypoints if self.active_list == "manual" else self.slam_waypoints
-                    if self.wp_idx >= len(cur):
+                    if self.active_list == "planned":
                         self.mode = "idle"
                         self.goal = None
+                        self.planned_waypoints = []
+                        self.active_list = "manual"
+                        self.wp_idx = 0
+                        self._publish_planned_path_msg([])
                     else:
-                        self.goal = cur[self.wp_idx]
+                        self.wp_idx += 1
+                        cur = self._current_waypoint_list_locked()
+                        if self.wp_idx >= len(cur):
+                            self.mode = "idle"
+                            self.goal = None
+                        else:
+                            self.goal = cur[self.wp_idx]
                 elif self.mode == "patrol":
-                    cur = self.waypoints if self.active_list == "manual" else self.slam_waypoints
+                    cur = self._current_waypoint_list_locked()
                     if len(cur) > 0:
                         self.wp_idx = (self.wp_idx + 1) % len(cur)
                         self.goal = cur[self.wp_idx]
@@ -853,6 +1175,22 @@ class NavManager(Node):
             lin *= 0.6
         if abs(ang) > float(self.get_parameter("pivot_angle_threshold_rad").value):
             lin = 0.0
+
+        if mode == "follow" and self.active_list == "planned":
+            lin *= 0.85
+            ang_cmd *= 0.75
+
+        with self._lock:
+            front_level, left_level, right_level = self._contact_levels_locked()
+        if lin > 0.0:
+            if front_level == "danger":
+                lin = 0.0
+            elif front_level == "warn":
+                lin *= 0.35
+            elif left_level == "danger" or right_level == "danger":
+                lin *= 0.15
+            elif left_level == "warn" or right_level == "warn":
+                lin *= 0.6
 
         lin = clamp(lin, -float(self.get_parameter("max_linear_cmd").value), float(self.get_parameter("max_linear_cmd").value))
         ang_cmd = clamp(ang_cmd, -float(self.get_parameter("max_angular_cmd").value), float(self.get_parameter("max_angular_cmd").value))
