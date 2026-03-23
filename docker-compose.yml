@@ -9,7 +9,7 @@ services:
       - .:/workspace
     environment:
       # IP du rover (pour HTTP IMU + /js + commandes). A adapter selon ton réseau.
-      - ROS_ROVER_IP=${ROS_ROVER_IP:-192.168.137.141}
+      - ROS_ROVER_IP=${ROS_ROVER_IP:-192.168.137.44}
       - ROVER_HTTP_PORT=${ROVER_HTTP_PORT:-80}
       # Pour que Foxglove bridge et ROS utilisent le même domaine DDS.
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
