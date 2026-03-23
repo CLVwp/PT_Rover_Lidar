@@ -194,9 +194,9 @@ class RoverBridge(Node):
         scan.angle_max = 2.0 * math.pi
         scan.angle_increment = math.radians(1.0)
         scan.time_increment = 0.0
-        scan.scan_time = 0.05
-        scan.range_min = 0.05
-        scan.range_max = 6.0
+        scan.scan_time = 0.01
+        scan.range_min = 0.02
+        scan.range_max = 12.0
 
         ranges = [float("inf")] * 360
         for i in range(0, len(raw_points), 2):
