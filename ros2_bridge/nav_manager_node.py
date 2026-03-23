@@ -75,11 +75,11 @@ class NavManager(Node):
         self.declare_parameter("target_frame", "map")
         self.declare_parameter("base_frame", "base_link")
         self.declare_parameter("cmd_period_s", 0.1)
-        self.declare_parameter("distance_tolerance_m", 0.25)
-        self.declare_parameter("max_linear_cmd", 0.55)
-        self.declare_parameter("max_angular_cmd", 1.0)
-        self.declare_parameter("linear_k", 0.8)
-        self.declare_parameter("angular_k", 1.4)
+        self.declare_parameter("distance_tolerance_m", 0.12)
+        self.declare_parameter("max_linear_cmd", 0.70)
+        self.declare_parameter("max_angular_cmd", 1.8)
+        self.declare_parameter("linear_k", 1.0)
+        self.declare_parameter("angular_k", 1.7)
         self.declare_parameter("pivot_angle_threshold_rad", 1.0)
         self.declare_parameter("naive_linear", 0.20)
         self.declare_parameter("naive_angular", 0.35)
@@ -87,22 +87,26 @@ class NavManager(Node):
         self.declare_parameter("robot_width_m", 0.18)
         self.declare_parameter("robot_height_m", 0.08)
         self.declare_parameter("robot_safety_margin_m", 0.001)
-        self.declare_parameter("planner_inflation_radius_m", 0.02)
+        self.declare_parameter("planner_inflation_radius_m", 0.03)
         self.declare_parameter("lidar_visual_offset_x_m", -0.02)
         self.declare_parameter("lidar_visual_offset_y_m", 0.0)
         self.declare_parameter("lidar_visual_offset_z_m", 0.05)
-        self.declare_parameter("map_occupied_threshold", 100)
+        self.declare_parameter("map_occupied_threshold", 90)
         self.declare_parameter("map_unknown_is_blocked", False)
-        self.declare_parameter("planned_path_spacing_m", 0.10)
-        self.declare_parameter("path_lookahead_m", 0.28)
+        self.declare_parameter("planner_wall_avoid_radius_m", 0.10)
+        self.declare_parameter("planner_wall_cost_scale", 2.5)
+        self.declare_parameter("planned_path_spacing_m", 0.05)
+        self.declare_parameter("path_lookahead_m", 0.25)
+        self.declare_parameter("recovery_turn_speed", 1.6)
+        self.declare_parameter("recovery_reverse_speed", -0.08)
         self.declare_parameter("slam_point_min_spacing_m", 0.35)
         self.declare_parameter("record_spacing_m", 0.20)
-        self.declare_parameter("contact_front_warn_m", 0.28)
-        self.declare_parameter("contact_front_danger_m", 0.16)
-        self.declare_parameter("contact_side_warn_m", 0.22)
-        self.declare_parameter("contact_side_danger_m", 0.12)
-        self.declare_parameter("contact_front_angle_deg", 70.0)
-        self.declare_parameter("contact_side_angle_deg", 90.0)
+        self.declare_parameter("contact_front_warn_m", 0.22)
+        self.declare_parameter("contact_front_danger_m", 0.12)
+        self.declare_parameter("contact_side_warn_m", 0.16)
+        self.declare_parameter("contact_side_danger_m", 0.09)
+        self.declare_parameter("contact_front_angle_deg", 55.0)
+        self.declare_parameter("contact_side_angle_deg", 70.0)
 
         self.target_frame = self.get_parameter("target_frame").value
         self.base_frame = self.get_parameter("base_frame").value
@@ -159,6 +163,7 @@ class NavManager(Node):
         self._grid_origin_y = 0.0
         self._occupancy_grid = []
         self._inflated_grid = []
+        self._wall_cost_grid = []
 
         self.timer = self.create_timer(float(self.get_parameter("cmd_period_s").value), self.on_timer)
         self.state_timer = self.create_timer(0.5, self.publish_state)
@@ -217,6 +222,12 @@ class NavManager(Node):
 
     def _path_lookahead_m(self) -> float:
         return float(self.get_parameter("path_lookahead_m").value)
+
+    def _planner_wall_avoid_radius_m(self) -> float:
+        return float(self.get_parameter("planner_wall_avoid_radius_m").value)
+
+    def _planner_wall_cost_scale(self) -> float:
+        return float(self.get_parameter("planner_wall_cost_scale").value)
 
     def _map_index(self, gx: int, gy: int) -> int:
         return gy * self._grid_width + gx
@@ -293,9 +304,35 @@ class NavManager(Node):
         msg.data = data
         self.pub_inflated_map.publish(msg)
 
+    def _compute_wall_cost_grid(self, occupied_cells):
+        if not self._occupancy_grid or self._grid_width <= 0 or self._grid_height <= 0:
+            self._wall_cost_grid = []
+            return
+        avoid_radius_cells = max(1, int(round(self._planner_wall_avoid_radius_m() / self._grid_resolution)))
+        cost_grid = [0.0] * len(self._occupancy_grid)
+        for ox, oy in occupied_cells:
+            for dy in range(-avoid_radius_cells, avoid_radius_cells + 1):
+                ny = oy + dy
+                if ny < 0 or ny >= self._grid_height:
+                    continue
+                for dx in range(-avoid_radius_cells, avoid_radius_cells + 1):
+                    nx = ox + dx
+                    if nx < 0 or nx >= self._grid_width:
+                        continue
+                    dist_cells = math.hypot(dx, dy)
+                    if dist_cells <= 0.0 or dist_cells > avoid_radius_cells:
+                        continue
+                    idx = self._map_index(nx, ny)
+                    if self._inflated_grid and self._inflated_grid[idx]:
+                        continue
+                    proximity = 1.0 - (dist_cells / avoid_radius_cells)
+                    cost_grid[idx] = max(cost_grid[idx], proximity)
+        self._wall_cost_grid = cost_grid
+
     def _inflate_occupancy_grid(self):
         if not self._occupancy_grid or self._grid_width <= 0 or self._grid_height <= 0:
             self._inflated_grid = []
+            self._wall_cost_grid = []
             return
         radius_cells = max(1, int(round(self._robot_planner_radius_m() / self._grid_resolution)))
         occupied_threshold = int(self.get_parameter("map_occupied_threshold").value)
@@ -320,6 +357,7 @@ class NavManager(Node):
                     if dx * dx + dy * dy <= radius_cells * radius_cells:
                         inflated[self._map_index(nx, ny)] = True
         self._inflated_grid = inflated
+        self._compute_wall_cost_grid(occupied_cells)
 
     def on_map(self, msg: OccupancyGrid):
         self._map_msg = msg
@@ -338,6 +376,13 @@ class NavManager(Node):
         if not self._inflated_grid:
             return True
         return self._inflated_grid[self._map_index(gx, gy)]
+
+    def _grid_wall_penalty(self, gx: int, gy: int) -> float:
+        if gx < 0 or gy < 0 or gx >= self._grid_width or gy >= self._grid_height:
+            return 0.0
+        if not self._wall_cost_grid:
+            return 0.0
+        return self._wall_cost_grid[self._map_index(gx, gy)] * self._planner_wall_cost_scale()
 
     def _nearest_free_cell(self, start_cell):
         if start_cell is None:
@@ -404,9 +449,13 @@ class NavManager(Node):
                 nx = current[0] + dx
                 ny = current[1] + dy
                 nxt = (nx, ny)
+                # Prevent diagonal corner cutting across inflated obstacles.
+                if dx != 0 and dy != 0:
+                    if self._is_grid_blocked(current[0] + dx, current[1]) or self._is_grid_blocked(current[0], current[1] + dy):
+                        continue
                 if self._is_grid_blocked(nx, ny):
                     continue
-                new_cost = g_score[current] + cost
+                new_cost = g_score[current] + cost + self._grid_wall_penalty(nx, ny)
                 if new_cost < g_score.get(nxt, float("inf")):
                     came_from[nxt] = current
                     g_score[nxt] = new_cost
@@ -436,6 +485,23 @@ class NavManager(Node):
         side_warn = float(self.get_parameter("contact_side_warn_m").value)
         side_danger = float(self.get_parameter("contact_side_danger_m").value)
         return (
+            self._contact_level(front, front_warn, front_danger),
+            self._contact_level(left, side_warn, side_danger),
+            self._contact_level(right, side_warn, side_danger),
+        )
+
+    def _contact_state_locked(self):
+        front = self._contact_summary["front"]
+        left = self._contact_summary["left"]
+        right = self._contact_summary["right"]
+        front_warn = float(self.get_parameter("contact_front_warn_m").value)
+        front_danger = float(self.get_parameter("contact_front_danger_m").value)
+        side_warn = float(self.get_parameter("contact_side_warn_m").value)
+        side_danger = float(self.get_parameter("contact_side_danger_m").value)
+        return (
+            front,
+            left,
+            right,
             self._contact_level(front, front_warn, front_danger),
             self._contact_level(left, side_warn, side_danger),
             self._contact_level(right, side_warn, side_danger),
@@ -1177,15 +1243,44 @@ class NavManager(Node):
         if dist < 0.8:
             lin *= 0.6
         if abs(ang) > float(self.get_parameter("pivot_angle_threshold_rad").value):
-            lin = 0.0
+            if mode == "follow" and self.active_list == "planned":
+                lin *= 0.20
+            else:
+                lin = 0.0
 
         if mode == "follow" and self.active_list == "planned":
-            lin *= 0.85
-            ang_cmd *= 0.75
+            lin *= 1.00
+            ang_cmd *= 1.00
 
         with self._lock:
-            front_level, left_level, right_level = self._contact_levels_locked()
-        if lin > 0.0:
+            front_dist, left_dist, right_dist, front_level, left_level, right_level = self._contact_state_locked()
+        if mode == "follow" and self.active_list == "planned":
+            recovery_turn = float(self.get_parameter("recovery_turn_speed").value)
+            recovery_reverse = float(self.get_parameter("recovery_reverse_speed").value)
+            turn_sign = 1.0 if left_dist >= right_dist else -1.0
+            if front_level == "danger":
+                if left_level == "danger" and right_level == "danger":
+                    lin = recovery_reverse
+                    ang_cmd = turn_sign * recovery_turn
+                else:
+                    lin = recovery_reverse * 0.5
+                    ang_cmd = turn_sign * recovery_turn
+            elif left_level == "danger" and right_level != "danger":
+                lin = min(lin, 0.08)
+                ang_cmd = -max(abs(ang_cmd), recovery_turn * 0.85)
+            elif right_level == "danger" and left_level != "danger":
+                lin = min(lin, 0.08)
+                ang_cmd = max(abs(ang_cmd), recovery_turn * 0.85)
+            elif front_level == "warn":
+                lin *= 0.55
+                ang_cmd += turn_sign * 0.45
+            elif left_level == "warn" and right_level != "warn":
+                lin *= 0.80
+                ang_cmd -= 0.35
+            elif right_level == "warn" and left_level != "warn":
+                lin *= 0.80
+                ang_cmd += 0.35
+        elif lin > 0.0:
             if front_level == "danger":
                 lin = 0.0
             elif front_level == "warn":
