@@ -81,6 +81,13 @@ class NavManager(Node):
         self.declare_parameter("pivot_angle_threshold_rad", 1.0)
         self.declare_parameter("naive_linear", 0.20)
         self.declare_parameter("naive_angular", 0.35)
+        self.declare_parameter("robot_length_m", 0.20)
+        self.declare_parameter("robot_width_m", 0.18)
+        self.declare_parameter("robot_height_m", 0.08)
+        self.declare_parameter("robot_safety_margin_m", 0.03)
+        self.declare_parameter("lidar_visual_offset_x_m", -0.02)
+        self.declare_parameter("lidar_visual_offset_y_m", 0.0)
+        self.declare_parameter("lidar_visual_offset_z_m", 0.05)
         self.declare_parameter("slam_point_min_spacing_m", 0.35)
         self.declare_parameter("record_spacing_m", 0.20)
         self.declare_parameter("contact_front_warn_m", 0.28)
@@ -110,6 +117,7 @@ class NavManager(Node):
         self.pub_state = self.create_publisher(String, "/nav_state", 10)
         self.pub_contact_markers = self.create_publisher(MarkerArray, "/nav/contact_zones", 10)
         self.pub_contact_state = self.create_publisher(String, "/nav/contact_state", 10)
+        self.pub_robot_markers = self.create_publisher(MarkerArray, "/nav/robot_markers", 10)
         self.cli_slam_clear = self.create_client(Clear, "/slam_toolbox/clear_changes")
         self.cli_slam_reset = self.create_client(Reset, "/slam_toolbox/reset")
 
@@ -234,7 +242,7 @@ class NavManager(Node):
 
     def _make_sector_marker(self, marker_id: int, center_rad: float, width_rad: float, radius: float, color, scale_x: float = 0.025):
         marker = Marker()
-        marker.header.frame_id = self._scan_frame
+        marker.header.frame_id = self.base_frame
         marker.header.stamp = self.get_clock().now().to_msg()
         marker.ns = "nav_contact_zone"
         marker.id = marker_id
@@ -257,9 +265,48 @@ class NavManager(Node):
         marker.points = pts
         return marker
 
+    def _make_annular_sector_marker(
+        self,
+        marker_id: int,
+        center_rad: float,
+        width_rad: float,
+        inner_radius: float,
+        outer_radius: float,
+        color,
+        ns: str,
+        scale_x: float = 0.02,
+    ):
+        marker = Marker()
+        marker.header.frame_id = self.base_frame
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = ns
+        marker.id = marker_id
+        marker.type = Marker.LINE_STRIP
+        marker.action = Marker.ADD
+        marker.pose.orientation.w = 1.0
+        marker.scale.x = scale_x
+        marker.color.r = color[0]
+        marker.color.g = color[1]
+        marker.color.b = color[2]
+        marker.color.a = color[3]
+        start = center_rad - width_rad * 0.5
+        end = center_rad + width_rad * 0.5
+        steps = 18
+        pts = []
+        for i in range(steps + 1):
+            a = start + (end - start) * (i / steps)
+            pts.append(Point(x=inner_radius * math.cos(a), y=inner_radius * math.sin(a), z=0.01))
+        pts.append(Point(x=outer_radius * math.cos(end), y=outer_radius * math.sin(end), z=0.01))
+        for i in range(steps, -1, -1):
+            a = start + (end - start) * (i / steps)
+            pts.append(Point(x=outer_radius * math.cos(a), y=outer_radius * math.sin(a), z=0.01))
+        pts.append(Point(x=inner_radius * math.cos(start), y=inner_radius * math.sin(start), z=0.01))
+        marker.points = pts
+        return marker
+
     def _make_text_marker(self, marker_id: int, x: float, y: float, text: str, color):
         marker = Marker()
-        marker.header.frame_id = self._scan_frame
+        marker.header.frame_id = self.base_frame
         marker.header.stamp = self.get_clock().now().to_msg()
         marker.ns = "nav_contact_text"
         marker.id = marker_id
@@ -277,6 +324,173 @@ class NavManager(Node):
         marker.text = text
         return marker
 
+    def _make_cube_marker(self, marker_id: int, frame_id: str, x: float, y: float, z: float, sx: float, sy: float, sz: float, color, ns: str):
+        marker = Marker()
+        marker.header.frame_id = frame_id
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = ns
+        marker.id = marker_id
+        marker.type = Marker.CUBE
+        marker.action = Marker.ADD
+        marker.pose.position.x = x
+        marker.pose.position.y = y
+        marker.pose.position.z = z
+        marker.pose.orientation.w = 1.0
+        marker.scale.x = sx
+        marker.scale.y = sy
+        marker.scale.z = sz
+        marker.color.r = color[0]
+        marker.color.g = color[1]
+        marker.color.b = color[2]
+        marker.color.a = color[3]
+        return marker
+
+    def _make_line_strip_marker(self, marker_id: int, frame_id: str, points, color, scale_x: float, ns: str):
+        marker = Marker()
+        marker.header.frame_id = frame_id
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = ns
+        marker.id = marker_id
+        marker.type = Marker.LINE_STRIP
+        marker.action = Marker.ADD
+        marker.pose.orientation.w = 1.0
+        marker.scale.x = scale_x
+        marker.color.r = color[0]
+        marker.color.g = color[1]
+        marker.color.b = color[2]
+        marker.color.a = color[3]
+        marker.points = points
+        return marker
+
+    def _make_arrow_marker(self, marker_id: int, frame_id: str, start: Point, end: Point, color, ns: str):
+        marker = Marker()
+        marker.header.frame_id = frame_id
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = ns
+        marker.id = marker_id
+        marker.type = Marker.ARROW
+        marker.action = Marker.ADD
+        marker.pose.orientation.w = 1.0
+        marker.scale.x = 0.02
+        marker.scale.y = 0.04
+        marker.scale.z = 0.06
+        marker.color.r = color[0]
+        marker.color.g = color[1]
+        marker.color.b = color[2]
+        marker.color.a = color[3]
+        marker.points = [start, end]
+        return marker
+
+    @staticmethod
+    def _rectangle_outline(length_m: float, width_m: float, z: float):
+        hx = 0.5 * length_m
+        hy = 0.5 * width_m
+        return [
+            Point(x=-hx, y=-hy, z=z),
+            Point(x=hx, y=-hy, z=z),
+            Point(x=hx, y=hy, z=z),
+            Point(x=-hx, y=hy, z=z),
+            Point(x=-hx, y=-hy, z=z),
+        ]
+
+    @staticmethod
+    def _zone_label_point(center_rad: float, radius: float, z: float = 0.05):
+        return Point(x=radius * math.cos(center_rad), y=radius * math.sin(center_rad), z=z)
+
+    def _publish_robot_markers(self):
+        base_frame = self.base_frame
+        robot_length = float(self.get_parameter("robot_length_m").value)
+        robot_width = float(self.get_parameter("robot_width_m").value)
+        robot_height = float(self.get_parameter("robot_height_m").value)
+        safety_margin = float(self.get_parameter("robot_safety_margin_m").value)
+        lidar_x = float(self.get_parameter("lidar_visual_offset_x_m").value)
+        lidar_y = float(self.get_parameter("lidar_visual_offset_y_m").value)
+        lidar_z = float(self.get_parameter("lidar_visual_offset_z_m").value)
+        safety_length = robot_length + 2.0 * safety_margin
+        safety_width = robot_width + 2.0 * safety_margin
+
+        markers = MarkerArray()
+        markers.markers.append(
+            self._make_cube_marker(
+                0,
+                base_frame,
+                0.0,
+                0.0,
+                0.5 * robot_height,
+                robot_length,
+                robot_width,
+                robot_height,
+                (0.12, 0.35, 0.88, 0.48),
+                "nav_robot_body",
+            )
+        )
+        markers.markers.append(
+            self._make_line_strip_marker(
+                1,
+                base_frame,
+                self._rectangle_outline(safety_length, safety_width, 0.01),
+                (1.0, 0.82, 0.10, 1.0),
+                0.024,
+                "nav_robot_safety",
+            )
+        )
+        markers.markers.append(
+            self._make_text_marker(
+                5,
+                0.0,
+                0.0,
+                "BODY",
+                (0.90, 0.95, 1.0, 0.9),
+            )
+        )
+        markers.markers.append(
+            self._make_text_marker(
+                6,
+                0.0,
+                0.5 * safety_width + 0.05,
+                "SAFETY",
+                (1.0, 0.86, 0.2, 0.95),
+            )
+        )
+        markers.markers.append(
+            self._make_arrow_marker(
+                2,
+                base_frame,
+                Point(x=0.0, y=0.0, z=robot_height + 0.01),
+                Point(x=0.5 * robot_length + 0.06, y=0.0, z=robot_height + 0.01),
+                (0.15, 0.95, 0.25, 0.95),
+                "nav_robot_heading",
+            )
+        )
+        markers.markers.append(
+            self._make_cube_marker(
+                3,
+                base_frame,
+                lidar_x,
+                lidar_y,
+                lidar_z,
+                0.035,
+                0.035,
+                0.035,
+                (0.95, 0.15, 0.95, 0.95),
+                "nav_robot_lidar",
+            )
+        )
+        markers.markers.append(
+            self._make_line_strip_marker(
+                4,
+                base_frame,
+                [
+                    Point(x=lidar_x, y=lidar_y, z=0.0),
+                    Point(x=lidar_x, y=lidar_y, z=lidar_z),
+                ],
+                (0.95, 0.15, 0.95, 0.55),
+                0.01,
+                "nav_robot_lidar",
+            )
+        )
+        self.pub_robot_markers.publish(markers)
+
     def _publish_contact_markers(self):
         front_warn = float(self.get_parameter("contact_front_warn_m").value)
         front_danger = float(self.get_parameter("contact_front_danger_m").value)
@@ -284,6 +498,14 @@ class NavManager(Node):
         side_danger = float(self.get_parameter("contact_side_danger_m").value)
         front_width = math.radians(float(self.get_parameter("contact_front_angle_deg").value))
         side_width = math.radians(float(self.get_parameter("contact_side_angle_deg").value))
+        robot_length = float(self.get_parameter("robot_length_m").value)
+        robot_width = float(self.get_parameter("robot_width_m").value)
+        safety_margin = float(self.get_parameter("robot_safety_margin_m").value)
+        inner_radius = 0.5 * max(robot_length + 2.0 * safety_margin, robot_width + 2.0 * safety_margin)
+        front_stop_outer = inner_radius + front_danger
+        front_slow_outer = inner_radius + front_warn
+        side_stop_outer = inner_radius + side_danger
+        side_slow_outer = inner_radius + side_warn
         with self._lock:
             front_min = self._contact_summary["front"]
             left_min = self._contact_summary["left"]
@@ -295,19 +517,55 @@ class NavManager(Node):
         front_color = self._contact_color(front_level)
         left_color = self._contact_color(left_level)
         right_color = self._contact_color(right_level)
-        danger_outline = (0.95, 0.15, 0.15, 0.30)
+        slow_outline = (0.18, 0.85, 0.25, 0.78)
+        stop_outline = (0.98, 0.20, 0.20, 0.92)
+        front_label_x = front_slow_outer + 0.12
+        front_label_y = 0.0
+        stop_label_x = front_stop_outer - 0.02
+        stop_label_y = 0.0
+        slow_label_x = front_slow_outer - 0.02
+        slow_label_y = 0.0
+        side_label_x = -0.06
+        left_label_y = side_slow_outer + 0.14
+        right_label_y = -(side_slow_outer + 0.14)
+        active_label_x = -(inner_radius + 0.12)
+        active_label_y = 0.0
         markers = MarkerArray()
-        markers.markers.append(self._make_sector_marker(0, 0.0, front_width, front_warn, front_color, 0.03))
-        markers.markers.append(self._make_sector_marker(1, math.pi * 0.5, side_width, side_warn, left_color, 0.03))
-        markers.markers.append(self._make_sector_marker(2, -math.pi * 0.5, side_width, side_warn, right_color, 0.03))
-        markers.markers.append(self._make_sector_marker(3, 0.0, front_width, front_danger, danger_outline, 0.018))
-        markers.markers.append(self._make_sector_marker(4, math.pi * 0.5, side_width, side_danger, danger_outline, 0.018))
-        markers.markers.append(self._make_sector_marker(5, -math.pi * 0.5, side_width, side_danger, danger_outline, 0.018))
+        markers.markers.append(
+            self._make_annular_sector_marker(
+                0, 0.0, front_width, inner_radius, front_slow_outer, slow_outline, "nav_contact_slow", 0.024
+            )
+        )
+        markers.markers.append(
+            self._make_annular_sector_marker(
+                1, math.pi * 0.5, side_width, inner_radius, side_slow_outer, slow_outline, "nav_contact_slow", 0.024
+            )
+        )
+        markers.markers.append(
+            self._make_annular_sector_marker(
+                2, -math.pi * 0.5, side_width, inner_radius, side_slow_outer, slow_outline, "nav_contact_slow", 0.024
+            )
+        )
+        markers.markers.append(
+            self._make_annular_sector_marker(
+                3, 0.0, front_width, inner_radius, front_stop_outer, stop_outline, "nav_contact_stop", 0.026
+            )
+        )
+        markers.markers.append(
+            self._make_annular_sector_marker(
+                4, math.pi * 0.5, side_width, inner_radius, side_stop_outer, stop_outline, "nav_contact_stop", 0.026
+            )
+        )
+        markers.markers.append(
+            self._make_annular_sector_marker(
+                5, -math.pi * 0.5, side_width, inner_radius, side_stop_outer, stop_outline, "nav_contact_stop", 0.026
+            )
+        )
         markers.markers.append(
             self._make_text_marker(
                 10,
-                front_warn + 0.07,
-                0.0,
+                front_label_x,
+                front_label_y,
                 f"front {front_level} {self._format_contact_distance(front_min)}",
                 front_color,
             )
@@ -315,8 +573,8 @@ class NavManager(Node):
         markers.markers.append(
             self._make_text_marker(
                 11,
-                0.0,
-                side_warn + 0.10,
+                side_label_x,
+                left_label_y,
                 f"left {left_level} {self._format_contact_distance(left_min)}",
                 left_color,
             )
@@ -324,10 +582,28 @@ class NavManager(Node):
         markers.markers.append(
             self._make_text_marker(
                 12,
-                0.0,
-                -(side_warn + 0.10),
+                side_label_x,
+                right_label_y,
                 f"right {right_level} {self._format_contact_distance(right_min)}",
                 right_color,
+            )
+        )
+        markers.markers.append(
+            self._make_text_marker(
+                13,
+                stop_label_x,
+                stop_label_y,
+                "STOP",
+                stop_outline,
+            )
+        )
+        markers.markers.append(
+            self._make_text_marker(
+                14,
+                slow_label_x,
+                slow_label_y,
+                "SLOW",
+                slow_outline,
             )
         )
         dominant_color = self._contact_color(dominant_level)
@@ -336,7 +612,7 @@ class NavManager(Node):
             if dominant_side != "none"
             else "active none"
         )
-        markers.markers.append(self._make_text_marker(20, 0.0, 0.0, dominant_label, dominant_color))
+        markers.markers.append(self._make_text_marker(20, active_label_x, active_label_y, dominant_label, dominant_color))
         self.pub_contact_markers.publish(markers)
         state_msg = String()
         state_msg.data = (
@@ -358,6 +634,7 @@ class NavManager(Node):
             self._contact_summary["front"] = front_min
             self._contact_summary["left"] = left_min
             self._contact_summary["right"] = right_min
+        self._publish_robot_markers()
         self._publish_contact_markers()
 
     def _record_waypoint_locked(self, x: float, y: float, force: bool = False):
