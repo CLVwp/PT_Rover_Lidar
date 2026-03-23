@@ -87,6 +87,7 @@ class NavManager(Node):
         self.declare_parameter("robot_width_m", 0.18)
         self.declare_parameter("robot_height_m", 0.08)
         self.declare_parameter("robot_safety_margin_m", 0.001)
+        self.declare_parameter("planner_inflation_radius_m", 0.02)
         self.declare_parameter("lidar_visual_offset_x_m", -0.02)
         self.declare_parameter("lidar_visual_offset_y_m", 0.0)
         self.declare_parameter("lidar_visual_offset_z_m", 0.05)
@@ -204,10 +205,12 @@ class NavManager(Node):
         self.pub_state.publish(m)
 
     def _robot_planner_radius_m(self) -> float:
-        half_length = 0.5 * float(self.get_parameter("robot_length_m").value)
-        half_width = 0.5 * float(self.get_parameter("robot_width_m").value)
+        planner_radius = float(self.get_parameter("planner_inflation_radius_m").value)
         safety_margin = float(self.get_parameter("robot_safety_margin_m").value)
-        return math.hypot(half_length + safety_margin, half_width + safety_margin)
+        # Planner inflation is intentionally decoupled from the full robot body.
+        # This lets us tune the wall offset directly (e.g. 2-3 cm) for path
+        # generation while keeping the visual body and local safety zones larger.
+        return max(0.0, planner_radius + safety_margin)
 
     def _planner_spacing_m(self) -> float:
         return float(self.get_parameter("planned_path_spacing_m").value)
@@ -294,7 +297,7 @@ class NavManager(Node):
         if not self._occupancy_grid or self._grid_width <= 0 or self._grid_height <= 0:
             self._inflated_grid = []
             return
-        radius_cells = max(1, int(math.ceil(self._robot_planner_radius_m() / self._grid_resolution)))
+        radius_cells = max(1, int(round(self._robot_planner_radius_m() / self._grid_resolution)))
         occupied_threshold = int(self.get_parameter("map_occupied_threshold").value)
         unknown_blocked = bool(self.get_parameter("map_unknown_is_blocked").value)
         inflated = [False] * len(self._occupancy_grid)
